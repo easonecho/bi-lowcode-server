@@ -1,0 +1,59 @@
+{
+  "name": "bi-lowcode-server",
+  "version": "1.0.0",
+  "description": "BI 低代码平台服务端 - Koa + TypeScript + Prisma + MySQL",
+  "main": "dist/server.js",
+  "scripts": {
+    "dev": "nodemon --watch src --ext ts --exec tsx src/server.ts",
+    "build": "tsc -p tsconfig.json",
+    "start": "node dist/server.js",
+    "prisma:generate": "prisma generate",
+    "prisma:migrate": "prisma migrate dev --name init",
+    "prisma:seed": "tsx prisma/seed.ts",
+    "prisma:studio": "prisma studio",
+    "db:reset": "prisma migrate reset --force"
+  },
+  "keywords": [
+    "bi",
+    "lowcode",
+    "koa",
+    "typescript",
+    "prisma"
+  ],
+  "author": "",
+  "license": "MIT",
+  "dependencies": {
+    "@koa/cors": "^5.0.0",
+    "@koa/router": "^15.7.0",
+    "@prisma/client": "^5.22.0",
+    "bcryptjs": "^3.0.3",
+    "dotenv": "^17.4.2",
+    "jsonwebtoken": "^9.0.3",
+    "koa": "^3.2.1",
+    "koa-bodyparser": "^4.4.1",
+    "koa-jwt": "^4.0.4",
+    "koa-logger": "^4.0.0",
+    "koa-swagger-decorator": "^1.8.7",
+    "mysql2": "^3.23.3",
+    "pino": "^9.4.0",
+    "pino-pretty": "^11.2.2",
+    "swagger-ui-dist": "^5.32.13",
+    "zod": "^3.23.8"
+  },
+  "devDependencies": {
+    "@types/bcryptjs": "^2.4.6",
+    "@types/jsonwebtoken": "^9.0.10",
+    "@types/koa": "^3.0.3",
+    "@types/koa__cors": "^5.0.1",
+    "@types/koa__router": "^12.0.5",
+    "@types/koa-bodyparser": "^4.3.13",
+    "@types/koa-jwt": "^3.2.2",
+    "@types/koa-logger": "^3.1.5",
+    "@types/node": "^26.2.0",
+    "nodemon": "^3.1.14",
+    "prisma": "^5.22.0",
+    "ts-node": "^10.9.2",
+    "tsx": "^4.23.12",
+    "typescript": "^7.0.2"
+  }
+}

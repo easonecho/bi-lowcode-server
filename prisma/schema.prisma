@@ -1,0 +1,345 @@
+// ============================================================================
+// BI 低代码平台 - Prisma 数据库模型定义 (企业级重构)
+// ============================================================================
+// 参考 jvs 企业级设计思想:
+//   P0: 审计字段标准化 / 逻辑删除 / 用户-角色多对多 / 操作日志 / Chart 创建者
+//   P1: 租户字段预留 / 部门组织架构 / 仪表板分享权限 / 数据字典
+// ============================================================================
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "mysql"
+  url      = env("DATABASE_URL")
+}
+
+// ============================================================================
+// 1. 用户与权限模块
+// ============================================================================
+
+// 用户模型
+model User {
+  id        Int      @id @default(autoincrement())
+  username  String   @unique @db.VarChar(50)  // 用户名 (全局唯一)
+  password  String   @db.VarChar(255)          // 密码 (bcrypt 加密)
+  email     String?  @db.VarChar(100)          // 邮箱
+  phone     String?  @db.VarChar(20)           // 手机号
+  nickname  String?  @db.VarChar(50)           // 昵称
+  avatar    String?  @db.VarChar(500)          // 头像 URL
+  status    Int      @default(1)               // 状态: 0=禁用, 1=启用
+  roleId    Int      @default(2)               // 主角色 ID (冗余字段, 便于 JWT 快速签发)
+  role      Role     @relation(fields: [roleId], references: [id])
+
+  // 组织架构
+  deptId    Int?                               // 所属部门 ID
+  dept      Department? @relation("UserDept", fields: [deptId], references: [id])
+  leaderOf  Department[] @relation("DeptLeader")              // 作为负责人的部门列表
+
+  // 多租户 (P1: 预留, 默认租户 1)
+  tenantId  Int      @default(1)               // 租户 ID
+
+  // 审计字段 (P0: 参考 jvs BasalPo)
+  createBy  String?  @db.VarChar(50)           // 创建人用户名
+  updateBy  String?  @db.VarChar(50)           // 更新人用户名
+  deleted   Boolean  @default(false) @map("del_flag")  // 逻辑删除标记
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  // 关联: 用户创建的资源
+  datasources     Datasource[]      @relation("UserDatasource")
+  datasets        Dataset[]         @relation("UserDataset")
+  dashboards      Dashboard[]       @relation("UserDashboard")
+  charts          Chart[]           @relation("UserChart")
+  dashboardShares DashboardShare[]  @relation("UserDashboardShare")
+
+  // 多角色关联 (P0: 用户-角色多对多)
+  userRoles UserRole[]
+
+  @@map("users")
+  @@index([deptId])
+  @@index([tenantId])
+  @@index([deleted])
+}
+
+// 角色模型 (RBAC 权限控制)
+model Role {
+  id          Int      @id @default(autoincrement())
+  name        String   @unique @db.VarChar(50)  // 角色名称
+  code        String   @unique @db.VarChar(50)  // 角色编码 (ADMIN/USER/VIEWER)
+  description String?  @db.VarChar(200)          // 描述
+  permissions Json?                             // 权限列表 (JSON 数组, 如 ["dashboard:view"])
+
+  // 数据权限范围 (P1: 参考 jvs sys_role.ds_type)
+  dsType      String   @default("all") @db.VarChar(20)  // all/oneself/subordinate/custom
+
+  // 审计 + 租户
+  tenantId    Int      @default(1)
+  createBy    String?  @db.VarChar(50)
+  updateBy    String?  @db.VarChar(50)
+  deleted     Boolean  @default(false) @map("del_flag")
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+
+  users         User[]
+  userRoles     UserRole[]
+  dashboardShares DashboardShare[]
+
+  @@map("roles")
+  @@index([tenantId])
+}
+
+// 用户-角色关联表 (P0: 多对多, 支持一人多角色)
+model UserRole {
+  id        Int      @id @default(autoincrement())
+  userId    Int
+  roleId    Int
+  user      User     @relation(fields: [userId], references: [id])
+  role      Role     @relation(fields: [roleId], references: [id])
+  createdAt DateTime @default(now()) @map("created_at")
+
+  @@unique([userId, roleId])
+  @@map("user_roles")
+  @@index([roleId])
+}
+
+// ============================================================================
+// 2. 组织架构模块 (P1 新增)
+// ============================================================================
+
+// 部门模型 (树形结构, 参考 jvs sys_dept)
+model Department {
+  id        Int      @id @default(autoincrement())
+  name      String   @db.VarChar(100)         // 部门名称
+  parentId  Int?                               // 父部门 ID (null=顶级)
+  parent    Department?  @relation("DeptTree", fields: [parentId], references: [id])
+  children  Department[] @relation("DeptTree")
+  sort      Int      @default(0)               // 排序
+  leaderId  Int?                               // 部门负责人 ID
+  leader    User?        @relation("DeptLeader", fields: [leaderId], references: [id])
+  status    Int      @default(1)               // 状态: 0=禁用, 1=启用
+  code      String?  @db.VarChar(50)           // 部门编码
+
+  // 审计 + 租户
+  tenantId  Int      @default(1)
+  createBy  String?  @db.VarChar(50)
+  updateBy  String?  @db.VarChar(50)
+  deleted   Boolean  @default(false) @map("del_flag")
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  users User[] @relation("UserDept")
+
+  @@map("departments")
+  @@index([parentId])
+  @@index([tenantId])
+}
+
+// ============================================================================
+// 3. 数据源管理模块
+// ============================================================================
+
+model Datasource {
+  id          Int      @id @default(autoincrement())
+  name        String   @db.VarChar(100)         // 数据源名称
+  type        String   @db.VarChar(50)          // 类型: mysql, postgresql, mongodb
+  host        String   @db.VarChar(255)         // 主机地址
+  port        Int                                // 端口
+  username    String   @db.VarChar(100)         // 用户名
+  password    String   @db.VarChar(512)         // 密码 (AES-256-GCM 加密存储, P0 修复)
+  database    String   @db.VarChar(100)         // 数据库名
+  options     Json?                              // 额外连接选项
+  status      Int      @default(1)               // 状态: 0=未连接, 1=已连接
+  description String?  @db.VarChar(500)          // 描述
+  creatorId   Int
+  creator     User     @relation("UserDatasource", fields: [creatorId], references: [id])
+
+  // 审计 + 租户
+  tenantId    Int      @default(1)
+  createBy    String?  @db.VarChar(50)
+  updateBy    String?  @db.VarChar(50)
+  deleted     Boolean  @default(false) @map("del_flag")
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+
+  datasets Dataset[]
+
+  @@map("datasources")
+  @@index([creatorId])
+  @@index([tenantId])
+  @@index([deleted])
+}
+
+// ============================================================================
+// 4. 数据集模块
+// ============================================================================
+
+model Dataset {
+  id            Int      @id @default(autoincrement())
+  name          String   @db.VarChar(100)       // 数据集名称
+  description   String?  @db.VarChar(500)        // 描述
+  datasourceId  Int                              // 关联数据源
+  datasource    Datasource @relation(fields: [datasourceId], references: [id])
+  sql           String   @db.Text                // SQL 查询语句
+  fields        Json?                            // 字段定义 (JSON: 字段名/类型/别名)
+  cacheEnabled  Boolean  @default(false)         // 是否启用缓存
+  cacheTtl      Int      @default(300)           // 缓存时间 (秒)
+  creatorId     Int
+  creator       User     @relation("UserDataset", fields: [creatorId], references: [id])
+
+  // 审计 + 租户
+  tenantId      Int      @default(1)
+  createBy      String?  @db.VarChar(50)
+  updateBy      String?  @db.VarChar(50)
+  deleted       Boolean  @default(false) @map("del_flag")
+  createdAt     DateTime @default(now()) @map("created_at")
+  updatedAt     DateTime @updatedAt @map("updated_at")
+
+  charts Chart[]
+
+  @@map("datasets")
+  @@index([datasourceId])
+  @@index([creatorId])
+  @@index([tenantId])
+  @@index([deleted])
+}
+
+// ============================================================================
+// 5. 仪表板与图表模块
+// ============================================================================
+
+model Dashboard {
+  id          Int      @id @default(autoincrement())
+  name        String   @db.VarChar(100)         // 仪表板名称
+  description String?  @db.VarChar(500)          // 描述
+  layout      Json?                              // 布局配置 (JSON: 图表位置/大小)
+  status      Int      @default(1)               // 状态: 0=草稿, 1=已发布
+  isPublic    Boolean  @default(false)           // 是否公开
+  creatorId   Int
+  creator     User     @relation("UserDashboard", fields: [creatorId], references: [id])
+
+  // 审计 + 租户
+  tenantId    Int      @default(1)
+  createBy    String?  @db.VarChar(50)
+  updateBy    String?  @db.VarChar(50)
+  deleted     Boolean  @default(false) @map("del_flag")
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+
+  charts Chart[]
+  shares DashboardShare[]
+
+  @@map("dashboards")
+  @@index([creatorId])
+  @@index([tenantId])
+  @@index([deleted])
+}
+
+// 仪表板分享/权限 (P1: 控制谁能看/编辑仪表板)
+model DashboardShare {
+  id           Int      @id @default(autoincrement())
+  dashboardId  Int
+  dashboard    Dashboard @relation(fields: [dashboardId], references: [id])
+  userId       Int?                               // 分享给指定用户 (null=按角色分享)
+  user         User?    @relation("UserDashboardShare", fields: [userId], references: [id])
+  roleId       Int?                               // 分享给指定角色
+  role         Role?    @relation(fields: [roleId], references: [id])
+  permission   String   @default("view") @db.VarChar(20)  // view/edit
+  createdAt    DateTime @default(now()) @map("created_at")
+
+  @@map("dashboard_shares")
+  @@index([dashboardId])
+  @@index([userId])
+  @@index([roleId])
+}
+
+// 图表模型 (P0: 新增 creatorId)
+model Chart {
+  id           Int      @id @default(autoincrement())
+  name         String   @db.VarChar(100)        // 图表名称
+  type         String   @db.VarChar(50)         // 类型: bar/line/pie/table/gauge/map/scatter/area
+  description  String?  @db.VarChar(500)         // 描述
+  config       Json                              // 图表配置 (JSON: 标题/颜色/图例等)
+  datasetId    Int                               // 关联数据集
+  dataset      Dataset  @relation(fields: [datasetId], references: [id])
+  dashboardId  Int?                              // 关联仪表板 (可选)
+  dashboard    Dashboard? @relation(fields: [dashboardId], references: [id])
+  position     Json?                             // 在仪表板中的位置 (JSON: x/y/w/h)
+  creatorId    Int                               // P0 新增: 创建者 ID
+  creator      User     @relation("UserChart", fields: [creatorId], references: [id])
+
+  // 审计 + 租户
+  tenantId     Int      @default(1)
+  createBy     String?  @db.VarChar(50)
+  updateBy     String?  @db.VarChar(50)
+  deleted      Boolean  @default(false) @map("del_flag")
+  createdAt    DateTime @default(now()) @map("created_at")
+  updatedAt    DateTime @updatedAt @map("updated_at")
+
+  @@map("charts")
+  @@index([datasetId])
+  @@index([dashboardId])
+  @@index([creatorId])
+  @@index([tenantId])
+  @@index([deleted])
+}
+
+// ============================================================================
+// 6. 操作日志模块 (P0 新增: 参考 jvs sys_log)
+// ============================================================================
+
+model OperationLog {
+  id          Int      @id @default(autoincrement())
+  userId      Int?                               // 操作用户 ID
+  username    String?  @db.VarChar(50)           // 操作用户名
+  module      String   @db.VarChar(50)           // 模块: auth/user/datasource/dataset/dashboard/chart/export
+  action      String   @db.VarChar(100)          // 操作: login/register/create/update/delete/export
+  method      String   @db.VarChar(10)           // HTTP 方法: GET/POST/PUT/DELETE
+  path        String   @db.VarChar(500)          // 请求路径
+  params      Json?                               // 请求参数
+  ip          String?  @db.VarChar(50)           // 客户端 IP
+  userAgent   String?  @db.VarChar(500)          // User-Agent
+  status      Int                                // HTTP 状态码
+  duration    Int?                               // 耗时 (ms)
+  errorMsg    String?  @db.Text                   // 错误信息
+  tenantId    Int      @default(1)
+  createdAt   DateTime @default(now()) @map("created_at")
+
+  @@map("operation_logs")
+  @@index([userId])
+  @@index([module])
+  @@index([createdAt])
+}
+
+// ============================================================================
+// 7. 数据字典模块 (P1 新增: 参考 jvs sys_dict)
+// ============================================================================
+
+model Dict {
+  id          Int      @id @default(autoincrement())
+  type        String   @unique @db.VarChar(50)   // 字典类型 (如 chart_type, datasource_type)
+  name        String   @db.VarChar(100)           // 字典名称
+  description String?  @db.VarChar(200)
+  status      Int      @default(1)               // 状态: 0=禁用, 1=启用
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+
+  items DictItem[]
+
+  @@map("dicts")
+}
+
+model DictItem {
+  id          Int      @id @default(autoincrement())
+  dictId      Int
+  dict        Dict     @relation(fields: [dictId], references: [id])
+  label       String   @db.VarChar(100)           // 显示文本
+  value       String   @db.VarChar(100)           // 存储值
+  sort        Int      @default(0)               // 排序
+  status      Int      @default(1)
+  createdAt   DateTime @default(now()) @map("created_at")
+
+  @@map("dict_items")
+  @@index([dictId])
+}
