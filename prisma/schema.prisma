@@ -53,6 +53,9 @@ model User {
   dashboards      Dashboard[]       @relation("UserDashboard")
   charts          Chart[]           @relation("UserChart")
   dashboardShares DashboardShare[]  @relation("UserDashboardShare")
+  dashboardFavorites DashboardFavorite[] @relation("UserDashboardFavorite")
+  dashboardGroups    DashboardGroup[]    @relation("UserDashboardGroup")
+  dashboardTemplates DashboardTemplate[] @relation("UserDashboardTemplate")
 
   // 多角色关联 (P0: 用户-角色多对多)
   userRoles UserRole[]
@@ -85,6 +88,7 @@ model Role {
   users         User[]
   userRoles     UserRole[]
   dashboardShares DashboardShare[]
+  roleMenus     RoleMenu[]
 
   @@map("roles")
   @@index([tenantId])
@@ -183,6 +187,7 @@ model Dataset {
   datasource    Datasource @relation(fields: [datasourceId], references: [id])
   sql           String   @db.Text                // SQL 查询语句
   fields        Json?                            // 字段定义 (JSON: 字段名/类型/别名)
+  params        Json?                            // 参数定义 (JSON: 参数名/类型/默认值, 供参数化查询)
   cacheEnabled  Boolean  @default(false)         // 是否启用缓存
   cacheTtl      Int      @default(300)           // 缓存时间 (秒)
   creatorId     Int
@@ -216,6 +221,11 @@ model Dashboard {
   layout      Json?                              // 布局配置 (JSON: 图表位置/大小)
   status      Int      @default(1)               // 状态: 0=草稿, 1=已发布
   isPublic    Boolean  @default(false)           // 是否公开
+  groupId      Int?                               // 所属分组 ID (null=未分组)
+  group        DashboardGroup? @relation(fields: [groupId], references: [id])
+  shareToken     String?  @unique @db.VarChar(64)   // 分享令牌 (null=未分享)
+  sharePassword  String?  @db.VarChar(255)          // 访问密码 (bcrypt, null=无密码)
+  shareExpiresAt DateTime?                          // 分享过期时间 (null=永久)
   creatorId   Int
   creator     User     @relation("UserDashboard", fields: [creatorId], references: [id])
 
@@ -229,11 +239,27 @@ model Dashboard {
 
   charts Chart[]
   shares DashboardShare[]
+  favorites DashboardFavorite[]
 
   @@map("dashboards")
   @@index([creatorId])
   @@index([tenantId])
   @@index([deleted])
+}
+
+// 仪表板收藏 (4.4 新增: 用户与看板的收藏关系)
+model DashboardFavorite {
+  id          Int      @id @default(autoincrement())
+  userId      Int
+  user        User     @relation("UserDashboardFavorite", fields: [userId], references: [id])
+  dashboardId Int
+  dashboard   Dashboard @relation(fields: [dashboardId], references: [id])
+  createdAt   DateTime @default(now()) @map("created_at")
+
+  @@unique([userId, dashboardId])  // 防重复收藏
+  @@map("dashboard_favorites")
+  @@index([userId])
+  @@index([dashboardId])
 }
 
 // 仪表板分享/权限 (P1: 控制谁能看/编辑仪表板)
@@ -313,7 +339,58 @@ model OperationLog {
 }
 
 // ============================================================================
-// 7. 数据字典模块 (P1 新增: 参考 jvs sys_dict)
+// 7. 菜单与按钮权限模块 (P0 新增: RBAC 菜单/按钮细粒度)
+// ============================================================================
+
+// 菜单模型 (树形结构: 目录 M / 菜单 C / 按钮 F 三级)
+model Menu {
+  id          Int      @id @default(autoincrement())
+  name        String   @db.VarChar(50)              // 菜单名称
+  parentId    Int      @default(0)                  // 父菜单ID (0=顶级)
+  orderNum    Int      @default(0)                  // 显示顺序
+  path        String?  @db.VarChar(200)             // 路由地址
+  component   String?  @db.VarChar(255)             // 前端组件路径
+  query       String?  @db.VarChar(255)             // 路由参数
+  isFrame     Boolean  @default(false)              // 是否外链
+  isCache     Boolean  @default(true)               // 是否缓存
+  menuType    String   @default("C") @db.VarChar(1) // M=目录 C=菜单 F=按钮
+  visible     Boolean  @default(true)               // 是否显示侧边栏
+  status      Int      @default(1)                  // 0=停用 1=启用
+  perms       String?  @db.VarChar(100)             // 权限标识 (如 system:user:list)
+  icon        String   @default("#") @db.VarChar(100)
+
+  tenantId    Int      @default(1)
+  createBy    String?  @db.VarChar(50)
+  updateBy    String?  @db.VarChar(50)
+  deleted     Boolean  @default(false) @map("del_flag")
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+
+  roleMenus RoleMenu[]
+
+  @@map("menus")
+  @@index([parentId])
+  @@index([tenantId])
+  @@index([menuType])
+}
+
+// 角色-菜单关联表
+model RoleMenu {
+  id        Int      @id @default(autoincrement())
+  roleId    Int
+  menuId    Int
+  role      Role     @relation(fields: [roleId], references: [id])
+  menu      Menu     @relation(fields: [menuId], references: [id])
+  createdAt DateTime @default(now()) @map("created_at")
+
+  @@unique([roleId, menuId])
+  @@map("role_menus")
+  @@index([roleId])
+  @@index([menuId])
+}
+
+// ============================================================================
+// 8. 数据字典模块 (原 7, 顺延)
 // ============================================================================
 
 model Dict {
@@ -342,4 +419,110 @@ model DictItem {
 
   @@map("dict_items")
   @@index([dictId])
+}
+
+// ============================================================================
+// P2 新增: 仪表板分组
+// ============================================================================
+model DashboardGroup {
+  id          Int      @id @default(autoincrement())
+  name        String   @db.VarChar(100)
+  description String?  @db.VarChar(500)
+  sort        Int      @default(0)
+  creatorId   Int
+  creator     User     @relation("UserDashboardGroup", fields: [creatorId], references: [id])
+  tenantId    Int      @default(1)
+  createBy    String?  @db.VarChar(50)
+  updateBy    String?  @db.VarChar(50)
+  deleted     Boolean  @default(false) @map("del_flag")
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+  dashboards  Dashboard[]
+
+  @@map("dashboard_groups")
+  @@index([creatorId])
+  @@index([tenantId])
+  @@index([deleted])
+}
+
+// ============================================================================
+// P2 新增: 仪表板模板
+// ============================================================================
+model DashboardTemplate {
+  id          Int      @id @default(autoincrement())
+  name        String   @db.VarChar(100)
+  description String?  @db.VarChar(500)
+  layout      Json?                              // 布局配置 (JSON)
+  thumbnail   String?  @db.VarChar(500)         // 缩略图 URL
+  category    String?  @db.VarChar(50)          // 模板分类 (如: 销售/运营/财务)
+  isPublic    Boolean  @default(true)           // 是否公开模板
+  creatorId   Int
+  creator     User     @relation("UserDashboardTemplate", fields: [creatorId], references: [id])
+  tenantId    Int      @default(1)
+  createBy    String?  @db.VarChar(50)
+  updateBy    String?  @db.VarChar(50)
+  deleted     Boolean  @default(false) @map("del_flag")
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+
+  @@map("dashboard_templates")
+  @@index([creatorId])
+  @@index([tenantId])
+  @@index([deleted])
+  @@index([category])
+}
+// ============================================================================
+// P2-4 新增: 系统配置 / 岗位管理 / 定时任务
+// ============================================================================
+
+model SystemConfig {
+  id          Int      @id @default(autoincrement())
+  configKey   String   @unique @db.VarChar(100)   // 参数键名
+  configValue String?  @db.LongText              // 参数值
+  configName  String   @db.VarChar(100)           // 参数名称
+  configType  String   @default("string") @db.VarChar(20)  // 类型: string/number/boolean/json
+  description String?  @db.VarChar(500)
+  sort        Int      @default(0)
+  tenantId    Int      @default(1)
+  createBy    String?  @db.VarChar(50)
+  updateBy    String?  @db.VarChar(50)
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+  @@map("system_configs")
+  @@index([tenantId])
+}
+
+model Position {
+  id          Int      @id @default(autoincrement())
+  name        String   @db.VarChar(100)           // 岗位名称
+  code        String   @unique @db.VarChar(100)    // 岗位编码
+  sort        Int      @default(0)
+  status      Int      @default(1)               // 0=禁用 1=启用
+  description String?  @db.VarChar(500)
+  tenantId    Int      @default(1)
+  createBy    String?  @db.VarChar(50)
+  updateBy    String?  @db.VarChar(50)
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+  @@map("positions")
+  @@index([tenantId])
+}
+
+model ScheduledTask {
+  id           Int      @id @default(autoincrement())
+  name         String   @db.VarChar(100)
+  cron         String   @db.VarChar(50)             // cron 表达式
+  handler      String   @db.VarChar(200)            // 处理器路径
+  params       Json?                                // 参数
+  status       Int      @default(1)                // 0=暂停 1=运行中
+  description  String?  @db.VarChar(500)
+  lastRunAt    DateTime?                            // 最后执行时间
+  lastResult   String?  @db.VarChar(500)           // 最后执行结果
+  tenantId     Int      @default(1)
+  createBy     String?  @db.VarChar(50)
+  updateBy     String?  @db.VarChar(50)
+  createdAt    DateTime @default(now()) @map("created_at")
+  updatedAt    DateTime @updatedAt @map("updated_at")
+  @@map("scheduled_tasks")
+  @@index([tenantId])
 }

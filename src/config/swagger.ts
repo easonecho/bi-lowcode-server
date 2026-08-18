@@ -12,7 +12,8 @@ export const swaggerSpec = {
   openapi: '3.0.3',
   info: {
     title: 'BI 低代码平台 API',
-    description: 'BI 低代码平台服务端接口文档\n\n## 功能模块\n- 用户认证 (登录/注册/JWT)\n- 用户管理 (CRUD/角色)\n- 数据源管理 (CRUD/连接测试)\n- 数据集管理 (CRUD/SQL查询)\n- 仪表板管理 (CRUD/布局)\n- 图表管理 (CRUD/8种图表类型)\n- 数据导出 (CSV/JSON)',
+    description:
+      'BI 低代码平台服务端接口文档\n\n## 功能模块\n- 用户认证 (登录/注册/JWT)\n- 用户管理 (CRUD/角色)\n- 数据源管理 (CRUD/连接测试)\n- 数据集管理 (CRUD/SQL查询)\n- 仪表板管理 (CRUD/布局)\n- 图表管理 (CRUD/8种图表类型)\n- 数据导出 (CSV/JSON)',
     version: '1.0.0',
     contact: {
       name: 'BI Low-Code Team',
@@ -21,8 +22,8 @@ export const swaggerSpec = {
   },
   servers: [
     {
-      url: 'http://localhost:3000',
-      description: '开发环境',
+      url: process.env.SWAGGER_URL || `http://localhost:${process.env.PORT || '3000'}`,
+      description: process.env.NODE_ENV || 'development',
     },
   ],
   components: {
@@ -163,7 +164,11 @@ export const swaggerSpec = {
                 type: 'object',
                 required: ['username', 'password'],
                 properties: {
-                  username: { type: 'string', description: '用户名 (3-50字符)', example: 'newuser' },
+                  username: {
+                    type: 'string',
+                    description: '用户名 (3-50字符)',
+                    example: 'newuser',
+                  },
                   password: { type: 'string', description: '密码 (至少6位)', example: '123456' },
                   email: { type: 'string', description: '邮箱', example: 'user@example.com' },
                   nickname: { type: 'string', description: '昵称', example: '新用户' },
@@ -173,7 +178,12 @@ export const swaggerSpec = {
           },
         },
         responses: {
-          200: { description: '注册成功', content: { 'application/json': { schema: { $ref: '#/components/schemas/ApiResponse' } } } },
+          200: {
+            description: '注册成功',
+            content: {
+              'application/json': { schema: { $ref: '#/components/schemas/ApiResponse' } },
+            },
+          },
         },
       },
     },
@@ -229,7 +239,12 @@ export const swaggerSpec = {
         summary: '获取当前用户信息',
         description: '获取当前登录用户的详细信息',
         responses: {
-          200: { description: '成功', content: { 'application/json': { schema: { $ref: '#/components/schemas/ApiResponse' } } } },
+          200: {
+            description: '成功',
+            content: {
+              'application/json': { schema: { $ref: '#/components/schemas/ApiResponse' } },
+            },
+          },
           401: { description: '未认证' },
         },
       },
@@ -241,12 +256,27 @@ export const swaggerSpec = {
         summary: '获取用户列表',
         description: '分页获取用户列表',
         parameters: [
-          { name: 'page', in: 'query', description: '页码', schema: { type: 'integer', default: 1 } },
-          { name: 'pageSize', in: 'query', description: '每页数量', schema: { type: 'integer', default: 10 } },
+          {
+            name: 'page',
+            in: 'query',
+            description: '页码',
+            schema: { type: 'integer', default: 1 },
+          },
+          {
+            name: 'pageSize',
+            in: 'query',
+            description: '每页数量',
+            schema: { type: 'integer', default: 10 },
+          },
           { name: 'keyword', in: 'query', description: '搜索关键词', schema: { type: 'string' } },
         ],
         responses: {
-          200: { description: '成功', content: { 'application/json': { schema: { $ref: '#/components/schemas/PaginateResponse' } } } },
+          200: {
+            description: '成功',
+            content: {
+              'application/json': { schema: { $ref: '#/components/schemas/PaginateResponse' } },
+            },
+          },
         },
       },
     },
@@ -255,7 +285,14 @@ export const swaggerSpec = {
         tags: ['用户管理'],
         summary: '获取用户详情',
         parameters: [{ name: 'id', in: 'path', required: true, schema: { type: 'integer' } }],
-        responses: { 200: { description: '成功', content: { 'application/json': { schema: { $ref: '#/components/schemas/ApiResponse' } } } } },
+        responses: {
+          200: {
+            description: '成功',
+            content: {
+              'application/json': { schema: { $ref: '#/components/schemas/ApiResponse' } },
+            },
+          },
+        },
       },
       put: {
         tags: ['用户管理'],
@@ -367,7 +404,9 @@ export const swaggerSpec = {
         tags: ['数据源管理'],
         summary: '更新数据源',
         parameters: [{ name: 'id', in: 'path', required: true, schema: { type: 'integer' } }],
-        requestBody: { content: { 'application/json': { schema: { $ref: '#/components/schemas/DataSource' } } } },
+        requestBody: {
+          content: { 'application/json': { schema: { $ref: '#/components/schemas/DataSource' } } },
+        },
         responses: { 200: { description: '更新成功' } },
       },
       delete: {
@@ -443,7 +482,9 @@ export const swaggerSpec = {
         tags: ['数据集管理'],
         summary: '更新数据集',
         parameters: [{ name: 'id', in: 'path', required: true, schema: { type: 'integer' } }],
-        requestBody: { content: { 'application/json': { schema: { $ref: '#/components/schemas/Dataset' } } } },
+        requestBody: {
+          content: { 'application/json': { schema: { $ref: '#/components/schemas/Dataset' } } },
+        },
         responses: { 200: { description: '更新成功' } },
       },
       delete: {
@@ -459,7 +500,17 @@ export const swaggerSpec = {
         summary: '预览数据集数据',
         parameters: [{ name: 'id', in: 'path', required: true, schema: { type: 'integer' } }],
         requestBody: {
-          content: { 'application/json': { schema: { type: 'object', properties: { limit: { type: 'integer', default: 100 }, offset: { type: 'integer', default: 0 } } } } },
+          content: {
+            'application/json': {
+              schema: {
+                type: 'object',
+                properties: {
+                  limit: { type: 'integer', default: 100 },
+                  offset: { type: 'integer', default: 0 },
+                },
+              },
+            },
+          },
         },
         responses: { 200: { description: '成功' } },
       },
@@ -519,7 +570,9 @@ export const swaggerSpec = {
         tags: ['仪表板管理'],
         summary: '更新仪表板',
         parameters: [{ name: 'id', in: 'path', required: true, schema: { type: 'integer' } }],
-        requestBody: { content: { 'application/json': { schema: { $ref: '#/components/schemas/Dashboard' } } } },
+        requestBody: {
+          content: { 'application/json': { schema: { $ref: '#/components/schemas/Dashboard' } } },
+        },
         responses: { 200: { description: '更新成功' } },
       },
       delete: {
@@ -555,7 +608,11 @@ export const swaggerSpec = {
                 required: ['name', 'type', 'config', 'datasetId'],
                 properties: {
                   name: { type: 'string', description: '图表名称' },
-                  type: { type: 'string', description: '图表类型', enum: ['bar', 'line', 'pie', 'table', 'gauge', 'map', 'scatter', 'area'] },
+                  type: {
+                    type: 'string',
+                    description: '图表类型',
+                    enum: ['bar', 'line', 'pie', 'table', 'gauge', 'map', 'scatter', 'area'],
+                  },
                   description: { type: 'string' },
                   config: { type: 'object', description: '图表配置 (ECharts配置)' },
                   datasetId: { type: 'integer', description: '数据集ID' },
@@ -588,7 +645,9 @@ export const swaggerSpec = {
         tags: ['图表管理'],
         summary: '更新图表',
         parameters: [{ name: 'id', in: 'path', required: true, schema: { type: 'integer' } }],
-        requestBody: { content: { 'application/json': { schema: { $ref: '#/components/schemas/Chart' } } } },
+        requestBody: {
+          content: { 'application/json': { schema: { $ref: '#/components/schemas/Chart' } } },
+        },
         responses: { 200: { description: '更新成功' } },
       },
       delete: {
@@ -633,4 +692,4 @@ export const swaggerSpec = {
       },
     },
   },
-};
+}

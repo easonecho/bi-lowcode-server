@@ -11,46 +11,45 @@
  * ============================================================================
  */
 
-import { BizException } from './biz-error';
-import { paginate, parsePagination } from './paginate';
-import logger from './logger';
-import type { Prisma } from '@prisma/client';
+import { BizException } from './biz-error'
+import { paginate, parsePagination } from './paginate'
+import logger from './logger'
 
 export interface BaseCrudOptions {
   /** 资源中文名 (用于错误消息) */
-  name: string;
+  name: string
   /** 资源不存在错误码 */
-  notFoundCode: number;
+  notFoundCode: number
   /** 创建前要隐藏的字段 (响应不返回, 如 password) */
-  sensitiveFields?: string[];
+  sensitiveFields?: string[]
   /** 默认排序 */
-  defaultOrderBy?: any;
+  defaultOrderBy?: any
 }
 
 export interface BaseListParams extends PageQuery {
-  where?: any;
-  include?: any;
-  select?: any;
-  orderBy?: any;
+  where?: any
+  include?: any
+  select?: any
+  orderBy?: any
 }
 
 export interface PageQuery {
-  page?: number;
-  pageSize?: number;
-  keyword?: string;
+  page?: number
+  pageSize?: number
+  keyword?: string
 }
 
 /**
  * 从对象中挑选已定义的字段 (更新用)
  */
 export function pickDefined<T extends object>(obj: T, keys: (keyof T)[]): Partial<T> {
-  const result: Partial<T> = {};
+  const result: Partial<T> = {}
   for (const k of keys) {
     if (obj[k] !== undefined) {
-      result[k] = obj[k];
+      result[k] = obj[k]
     }
   }
-  return result;
+  return result
 }
 
 /**
@@ -61,25 +60,30 @@ export function createBaseCrud<
   TCreateInput = any,
   TUpdateInput = any,
 >(model: any, options: BaseCrudOptions) {
-  const { name, notFoundCode, sensitiveFields = [], defaultOrderBy = { createdAt: 'desc' } } = options;
+  const {
+    name,
+    notFoundCode,
+    sensitiveFields = [],
+    defaultOrderBy = { createdAt: 'desc' },
+  } = options
 
   /**
    * 隐藏敏感字段 (适用于单个对象或数组)
    */
   function stripSensitive(obj: any): any {
-    if (!obj) return obj;
-    if (Array.isArray(obj)) return obj.map(stripSensitive);
-    if (typeof obj !== 'object') return obj;
-    const copy = { ...obj };
-    for (const f of sensitiveFields) delete copy[f];
-    return copy;
+    if (!obj) return obj
+    if (Array.isArray(obj)) return obj.map(stripSensitive)
+    if (typeof obj !== 'object') return obj
+    const copy = { ...obj }
+    for (const f of sensitiveFields) delete copy[f]
+    return copy
   }
 
   /**
    * 列表 (分页)
    */
   async function list(params: BaseListParams) {
-    const { page, pageSize, skip, take } = parsePagination(params);
+    const { page, pageSize, skip, take } = parsePagination(params)
     const result = await paginate(model as any, {
       where: params.where,
       include: params.include,
@@ -89,7 +93,7 @@ export function createBaseCrud<
       pageSize,
       skip,
       take,
-    });
+    })
 
     return {
       list: stripSensitive(result.list),
@@ -97,7 +101,7 @@ export function createBaseCrud<
       page: result.page,
       pageSize: result.pageSize,
       totalPages: result.totalPages,
-    };
+    }
   }
 
   /**
@@ -108,11 +112,11 @@ export function createBaseCrud<
       where: { id },
       include: opts?.include,
       select: opts?.select,
-    });
+    })
     if (!record) {
-      throw new BizException(notFoundCode, `${name}不存在`, 404);
+      throw new BizException(notFoundCode, `${name}不存在`, 404)
     }
-    return stripSensitive(record) as TModel;
+    return stripSensitive(record) as TModel
   }
 
   /**
@@ -121,9 +125,9 @@ export function createBaseCrud<
   async function create(data: TCreateInput, extras: Record<string, any> = {}): Promise<TModel> {
     const record = await model.create({
       data: { ...(data as any), ...extras },
-    });
-    logger.info({ id: record.id }, `创建${name}`);
-    return stripSensitive(record) as TModel;
+    })
+    logger.info({ id: record.id }, `创建${name}`)
+    return stripSensitive(record) as TModel
   }
 
   /**
@@ -132,40 +136,47 @@ export function createBaseCrud<
   async function update(
     id: number,
     data: TUpdateInput,
-    opts?: { include?: any; select?: any }
+    opts?: { include?: any; select?: any },
   ): Promise<TModel> {
     // 先校验存在 (抛 404)
-    await getById(id);
+    await getById(id)
 
     const record = await model.update({
       where: { id },
       data,
       include: opts?.include,
       select: opts?.select,
-    });
-    logger.info({ id }, `更新${name}`);
-    return stripSensitive(record) as TModel;
+    })
+    logger.info({ id }, `更新${name}`)
+    return stripSensitive(record) as TModel
   }
 
   /**
    * 删除记录 (可自定义删除前校验)
    */
-  async function remove(id: number, preCheck?: (record: any) => Promise<void> | void): Promise<void> {
+  async function remove(
+    id: number,
+    preCheck?: (record: any) => Promise<void> | void,
+  ): Promise<void> {
     await prismaTransaction(async (tx: any) => {
       // Prisma 无法直接用 model 反查 tx 上对应委托; 改为显式 find/delete
-      const record = await tx[modelName(model)].findUnique({ where: { id } });
+      const mName = modelName(model)
+      if (!mName) {
+        throw new Error('remove 需要 modelName, 请改用 createBaseCrudV2 的 removeTx 方法')
+      }
+      const record = await tx[mName].findUnique({ where: { id } })
       if (!record) {
-        throw new BizException(notFoundCode, `${name}不存在`, 404);
+        throw new BizException(notFoundCode, `${name}不存在`, 404)
       }
 
       if (preCheck) {
-        await preCheck(record);
+        await preCheck(record)
       }
 
-      await tx[modelName(model)].delete({ where: { id } });
-    });
+      await tx[mName].delete({ where: { id } })
+    })
 
-    logger.info({ id }, `删除${name}`);
+    logger.info({ id }, `删除${name}`)
   }
 
   return {
@@ -175,7 +186,7 @@ export function createBaseCrud<
     update,
     remove,
     stripSensitive,
-  };
+  }
 }
 
 /**
@@ -184,8 +195,8 @@ export function createBaseCrud<
  */
 export async function prismaTransaction<T>(fn: (tx: any) => Promise<T>): Promise<T> {
   // 延迟导入避免循环依赖
-  const { prisma } = await import('../config/prisma');
-  return prisma.$transaction(fn);
+  const { prisma } = await import('../config/prisma')
+  return prisma.$transaction(fn)
 }
 
 /**
@@ -196,7 +207,7 @@ function modelName(model: any): string {
   // Prisma delegate 有内部标识; 启发式: 尝试访问私有属性或构造函数 name
   // 简化: 调用方通过 createBaseCrud 的 options 传入 modelName
   // 此处为兜底实现, 实际使用时请传入 modelName
-  return (model as any)._modelName || '';
+  return (model as any)._modelName || ''
 }
 
 /**
@@ -207,8 +218,8 @@ export function createBaseCrudV2<
   TCreateInput = any,
   TUpdateInput = any,
 >(model: any, options: BaseCrudOptions & { modelName: string }) {
-  const base = createBaseCrud<TModel, TCreateInput, TUpdateInput>(model, options);
-  const { modelName: mName, notFoundCode, name: cnName } = options;
+  const base = createBaseCrud<TModel, TCreateInput, TUpdateInput>(model, options)
+  const { modelName: mName, notFoundCode, name: cnName } = options
 
   return {
     ...base,
@@ -216,13 +227,13 @@ export function createBaseCrudV2<
     /** 带事务的删除 (可访问 tx[mName]) */
     async removeTx(id: number, preCheck?: (tx: any, record: any) => Promise<void> | void) {
       return prismaTransaction(async (tx) => {
-        const record = await tx[mName].findUnique({ where: { id } });
+        const record = await tx[mName].findUnique({ where: { id } })
         if (!record) {
-          throw new BizException(notFoundCode, `${cnName}不存在`, 404);
+          throw new BizException(notFoundCode, `${cnName}不存在`, 404)
         }
-        if (preCheck) await preCheck(tx, record);
-        await tx[mName].delete({ where: { id } });
-      });
+        if (preCheck) await preCheck(tx, record)
+        await tx[mName].delete({ where: { id } })
+      })
     },
-  };
+  }
 }

@@ -6,55 +6,75 @@
  *  - 数据源密码使用 AES-256-GCM 加密存储, 不再明文保存
  *  - 使用连接池 (getPool/executeQuery) 替代每次新建连接
  *  - 执行 SQL 前增加只读校验
+ * P2 增强:
+ *  - getTableFields: 获取表字段结构
+ *  - getSchema: 获取整个库的表+字段树 (供前端 Schema 浏览器)
  * ============================================================================
  */
 
-import { prisma } from '../../config/prisma';
-import { BizException } from '../../utils/biz-error';
-import { ErrorCode } from '../../constants/error-code';
-import { encrypt, decrypt, isEncrypted } from '../../utils/crypto';
+import { prisma } from '../../config/prisma'
+import { BizException } from '../../utils/biz-error'
+import { ErrorCode } from '../../constants/error-code'
+import { encrypt } from '../../utils/crypto'
 import {
-  getPool,
-  executeQuery,
   testConnection,
   getTableNames,
+  getTableFields,
   releasePool,
   decryptPassword,
   type DataSourceConfig,
-} from '../../utils/db-pool';
-import { paginate, parsePagination } from '../../utils/paginate';
-import { CreateDatasourceInput, UpdateDatasourceInput } from './datasource.dto';
+  type TableField,
+} from '../../utils/db-pool'
+import { paginate, parsePagination } from '../../utils/paginate'
+import { getTenantId, ensureTenantScope } from '../../utils/request-context'
+import { buildDataScopeWhere, ensureDataScope } from '../../utils/data-scope'
+import { CreateDatasourceInput, UpdateDatasourceInput } from './datasource.dto'
 
 /** 响应中携带的数据源信息 (已排除/屏蔽密码) */
 interface DatasourceVO {
-  id: number;
-  name: string;
-  type: string;
-  host: string;
-  port: number;
-  username: string;
-  database: string;
-  options?: unknown;
-  status: number;
-  description?: string | null;
-  creatorId: number;
-  createdAt: Date;
-  updatedAt: Date;
-  creator?: unknown;
-  datasets?: unknown;
+  id: number
+  name: string
+  type: string
+  host: string
+  port: number
+  username: string
+  database: string
+  options?: unknown
+  status: number
+  description?: string | null
+  creatorId: number
+  createdAt: Date
+  updatedAt: Date
+  creator?: unknown
+  datasets?: unknown
+}
+
+/** Schema 树节点 (表 -> 字段) */
+export interface SchemaTableNode {
+  name: string
+  fields: TableField[]
 }
 
 /** 将 DB 记录转换为 VO (保证 password 不出现在响应中) */
 function toVO(ds: any): DatasourceVO {
-  const { password, ...rest } = ds;
+  const { password: _password, ...rest } = ds
   // 保持字段顺序
-  return rest as DatasourceVO;
+  return rest as DatasourceVO
 }
 
 /**
  * 根据记录构建连接配置 (负责解密密码)
  */
-function buildDsConfig(ds: { id: number; type: string; host: string; port: number; username: string; password: string; database: string; options?: any }): DataSourceConfig {
+function buildDsConfig(ds: {
+  id: number
+  type: string
+  host: string
+  port: number
+  username: string
+  password: string
+  database: string
+  options?: any
+}): DataSourceConfig {
   return {
     id: ds.id,
     type: ds.type,
@@ -64,25 +84,32 @@ function buildDsConfig(ds: { id: number; type: string; host: string; port: numbe
     password: decryptPassword(ds.password),
     database: ds.database,
     options: ds.options,
-  };
+  }
 }
 
 /**
  * 列表查询 (分页)
  */
-export async function list(query: { page?: number; pageSize?: number; keyword?: string; type?: string }) {
-  const { page, pageSize, skip, take } = parsePagination(query);
+export async function list(query: {
+  page?: number
+  pageSize?: number
+  keyword?: string
+  type?: string
+}) {
+  const { page, pageSize, skip, take } = parsePagination(query)
 
-  const where: any = {};
+  const where: any = {}
   if (query.keyword) {
     where.OR = [
       { name: { contains: query.keyword } },
       { host: { contains: query.keyword } },
       { database: { contains: query.keyword } },
-    ];
+    ]
   }
-  if (query.type) where.type = query.type;
-  where.deleted = false;
+  if (query.type) where.type = query.type
+  where.deleted = false
+  where.tenantId = getTenantId()
+  Object.assign(where, await buildDataScopeWhere())
 
   const result = await paginate(prisma.datasource as any, {
     where,
@@ -95,7 +122,7 @@ export async function list(query: { page?: number; pageSize?: number; keyword?: 
     pageSize,
     skip,
     take,
-  });
+  })
 
   return {
     list: result.list.map((ds: any) => toVO(ds)),
@@ -103,7 +130,7 @@ export async function list(query: { page?: number; pageSize?: number; keyword?: 
     page: result.page,
     pageSize: result.pageSize,
     totalPages: result.totalPages,
-  };
+  }
 }
 
 /**
@@ -116,10 +143,12 @@ export async function getById(id: number) {
       creator: { select: { id: true, username: true, nickname: true } },
       _count: { select: { datasets: true } },
     },
-  });
-  if (!ds) throw new BizException(ErrorCode.DATASOURCE_NOT_FOUND, undefined, 404);
-  if (ds.deleted) throw new BizException(ErrorCode.DATASOURCE_NOT_FOUND, undefined, 404);
-  return toVO(ds);
+  })
+  if (!ds) throw new BizException(ErrorCode.DATASOURCE_NOT_FOUND, undefined, 404)
+  if (ds.deleted) throw new BizException(ErrorCode.DATASOURCE_NOT_FOUND, undefined, 404)
+  ensureTenantScope(ds)
+  await ensureDataScope(ds)
+  return toVO(ds)
 }
 
 /**
@@ -127,7 +156,7 @@ export async function getById(id: number) {
  * P0 修复: 密码使用 AES-256-GCM 加密后保存
  */
 export async function create(input: CreateDatasourceInput, creatorId: number) {
-  const encryptedPassword = encrypt(input.password);
+  const encryptedPassword = encrypt(input.password)
 
   const ds = await prisma.datasource.create({
     data: {
@@ -142,10 +171,11 @@ export async function create(input: CreateDatasourceInput, creatorId: number) {
       options: input.options as any,
       creatorId,
       createBy: 'system',
+      tenantId: getTenantId(),
     },
-  });
+  })
 
-  return toVO(ds);
+  return toVO(ds)
 }
 
 /**
@@ -154,18 +184,27 @@ export async function create(input: CreateDatasourceInput, creatorId: number) {
  * - 更新成功后, 清除该数据源的连接池缓存 (配置可能变更)
  */
 export async function update(id: number, input: UpdateDatasourceInput) {
-  const data: any = { ...input, updateBy: 'system' };
+  // 租户隔离: 校验资源归属当前租户后再更新
+  const existing = await prisma.datasource.findUnique({
+    where: { id },
+    select: { tenantId: true, creatorId: true },
+  })
+  if (!existing) throw new BizException(ErrorCode.DATASOURCE_NOT_FOUND, undefined, 404)
+  ensureTenantScope(existing)
+  await ensureDataScope(existing)
+
+  const data: any = { ...input, updateBy: 'system' }
 
   if (input.password) {
-    data.password = encrypt(input.password);
+    data.password = encrypt(input.password)
   }
 
-  const updated = await prisma.datasource.update({ where: { id }, data });
+  const updated = await prisma.datasource.update({ where: { id }, data })
 
   // 清除连接池缓存 (配置已变更)
-  releasePool(id);
+  releasePool(id)
 
-  return toVO(updated);
+  return toVO(updated)
 }
 
 /**
@@ -177,17 +216,19 @@ export async function remove(id: number) {
     const ds = await tx.datasource.findUnique({
       where: { id },
       include: { _count: { select: { datasets: true } } },
-    });
+    })
 
-    if (!ds) throw new BizException(ErrorCode.DATASOURCE_NOT_FOUND, undefined, 404);
+    if (!ds) throw new BizException(ErrorCode.DATASOURCE_NOT_FOUND, undefined, 404)
+    ensureTenantScope(ds)
+    await ensureDataScope(ds)
     if (ds._count.datasets > 0) {
-      throw new BizException(ErrorCode.DATASOURCE_HAS_DATASETS);
+      throw new BizException(ErrorCode.DATASOURCE_HAS_DATASETS)
     }
 
-    await tx.datasource.update({ where: { id }, data: { deleted: true } });
-  });
+    await tx.datasource.update({ where: { id }, data: { deleted: true } })
+  })
 
-  releasePool(id);
+  releasePool(id)
 }
 
 /**
@@ -195,11 +236,13 @@ export async function remove(id: number) {
  * P0 修复: 使用 testConnection 工具函数替代新建单连接
  */
 export async function test(id: number) {
-  const ds = await prisma.datasource.findUnique({ where: { id } });
-  if (!ds) throw new BizException(ErrorCode.DATASOURCE_NOT_FOUND, undefined, 404);
-  if (ds.deleted) throw new BizException(ErrorCode.DATASOURCE_NOT_FOUND, undefined, 404);
+  const ds = await prisma.datasource.findUnique({ where: { id } })
+  if (!ds) throw new BizException(ErrorCode.DATASOURCE_NOT_FOUND, undefined, 404)
+  if (ds.deleted) throw new BizException(ErrorCode.DATASOURCE_NOT_FOUND, undefined, 404)
+  ensureTenantScope(ds)
+  await ensureDataScope(ds)
 
-  const cfg = buildDsConfig(ds);
+  const cfg = buildDsConfig(ds)
 
   try {
     await testConnection({
@@ -209,38 +252,88 @@ export async function test(id: number) {
       username: cfg.username,
       password: cfg.password,
       database: cfg.database,
-    });
+    })
   } catch (err) {
     // 标记为未连接
-    await prisma.datasource.update({ where: { id }, data: { status: 0 } });
+    await prisma.datasource.update({ where: { id }, data: { status: 0 } })
     throw new BizException(
       ErrorCode.DATASOURCE_CONNECT_FAILED,
-      err instanceof Error ? err.message : undefined
-    );
+      err instanceof Error ? err.message : undefined,
+    )
   }
 
   // 连接成功: 更新状态并返回表列表
-  const pool = getPool(cfg);
-  const tables = await getTableNames(cfg);
-  await prisma.datasource.update({ where: { id }, data: { status: 1 } });
+  const tables = await getTableNames(cfg)
+  await prisma.datasource.update({ where: { id }, data: { status: 1 } })
 
   return {
     connected: true,
     tables,
     tableCount: tables.length,
-  };
+  }
 }
 
 /**
  * 获取数据源的表列表
  */
 export async function listTables(id: number) {
-  const ds = await prisma.datasource.findUnique({ where: { id } });
-  if (!ds) throw new BizException(ErrorCode.DATASOURCE_NOT_FOUND, undefined, 404);
-  if (ds.deleted) throw new BizException(ErrorCode.DATASOURCE_NOT_FOUND, undefined, 404);
+  const ds = await prisma.datasource.findUnique({ where: { id } })
+  if (!ds) throw new BizException(ErrorCode.DATASOURCE_NOT_FOUND, undefined, 404)
+  if (ds.deleted) throw new BizException(ErrorCode.DATASOURCE_NOT_FOUND, undefined, 404)
+  ensureTenantScope(ds)
+  await ensureDataScope(ds)
 
-  const cfg = buildDsConfig(ds);
-  return getTableNames(cfg);
+  const cfg = buildDsConfig(ds)
+  return getTableNames(cfg)
+}
+
+/**
+ * P2 新增: 获取表的字段结构
+ */
+export async function listTableFields(id: number, table: string) {
+  const ds = await prisma.datasource.findUnique({ where: { id } })
+  if (!ds) throw new BizException(ErrorCode.DATASOURCE_NOT_FOUND, undefined, 404)
+  if (ds.deleted) throw new BizException(ErrorCode.DATASOURCE_NOT_FOUND, undefined, 404)
+  ensureTenantScope(ds)
+  await ensureDataScope(ds)
+
+  const cfg = buildDsConfig(ds)
+  return getTableFields(cfg, table)
+}
+
+/**
+ * P2 新增: 获取整个库的 Schema (表 + 字段树)
+ * 供前端 Schema 浏览器展示。为避免库过大, 仅返回表名 + 字段名/类型, 不返回数据。
+ */
+export async function getSchema(id: number) {
+  const ds = await prisma.datasource.findUnique({ where: { id } })
+  if (!ds) throw new BizException(ErrorCode.DATASOURCE_NOT_FOUND, undefined, 404)
+  if (ds.deleted) throw new BizException(ErrorCode.DATASOURCE_NOT_FOUND, undefined, 404)
+  ensureTenantScope(ds)
+  await ensureDataScope(ds)
+
+  const cfg = buildDsConfig(ds)
+  const tables = await getTableNames(cfg)
+
+  // 并发获取每张表的字段 (限制并发数避免压垮数据库)
+  const CONCURRENCY = 5
+  const result: SchemaTableNode[] = []
+
+  for (let i = 0; i < tables.length; i += CONCURRENCY) {
+    const batch = tables.slice(i, i + CONCURRENCY)
+    const fieldsList = await Promise.all(
+      batch.map((t) => getTableFields(cfg, t).catch(() => [] as TableField[])),
+    )
+    batch.forEach((t, idx) => {
+      result.push({ name: t, fields: fieldsList[idx] })
+    })
+  }
+
+  return {
+    database: ds.database,
+    tableCount: tables.length,
+    tables: result,
+  }
 }
 
 /**
@@ -248,10 +341,12 @@ export async function listTables(id: number) {
  * 通过数据源 ID 获取可直接执行 SQL 的数据库连接配置 (已解密密码)
  */
 export async function getDsConfigForQuery(id: number): Promise<DataSourceConfig> {
-  const ds = await prisma.datasource.findUnique({ where: { id } });
-  if (!ds) throw new BizException(ErrorCode.DATASOURCE_NOT_FOUND, undefined, 404);
-  if (ds.deleted) throw new BizException(ErrorCode.DATASOURCE_NOT_FOUND, undefined, 404);
-  return buildDsConfig(ds);
+  const ds = await prisma.datasource.findUnique({ where: { id } })
+  if (!ds) throw new BizException(ErrorCode.DATASOURCE_NOT_FOUND, undefined, 404)
+  if (ds.deleted) throw new BizException(ErrorCode.DATASOURCE_NOT_FOUND, undefined, 404)
+  ensureTenantScope(ds)
+  await ensureDataScope(ds)
+  return buildDsConfig(ds)
 }
 
 export const datasourceService = {
@@ -262,5 +357,7 @@ export const datasourceService = {
   remove,
   test,
   listTables,
+  listTableFields,
+  getSchema,
   getDsConfigForQuery,
-};
+}

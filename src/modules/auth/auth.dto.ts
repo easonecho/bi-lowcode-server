@@ -6,7 +6,7 @@
  * ============================================================================
  */
 
-import { z } from 'zod';
+import { z } from 'zod'
 
 /**
  * 登录参数 schema
@@ -17,7 +17,7 @@ export const loginSchema = z.object({
     username: z.string().min(1, '用户名不能为空'),
     password: z.string().min(1, '密码不能为空'),
   }),
-});
+})
 
 /**
  * 注册参数 schema
@@ -31,10 +31,31 @@ export const registerSchema = z.object({
     phone: z.string().optional(),
     nickname: z.string().optional(),
   }),
-});
+})
+
+/**
+ * 刷新 token 参数 schema
+ */
+export const refreshSchema = z.object({
+  body: z.object({
+    refreshToken: z.string().min(1, 'refreshToken 不能为空'),
+  }),
+})
+
+/**
+ * 登出请求 schema (可选, 前端传 refreshToken 以便服务端拉黑)
+ */
+export const logoutSchema = z.object({
+  body: z.object({
+    refreshToken: z.string().optional(),
+  }),
+})
 
 /** 登录请求体类型 */
-export type LoginInput = z.infer<typeof loginSchema>['body'];
-
+export type LoginInput = z.infer<typeof loginSchema>['body']
 /** 注册请求体类型 */
-export type RegisterInput = z.infer<typeof registerSchema>['body'];
+export type RegisterInput = z.infer<typeof registerSchema>['body']
+/** 刷新 token 请求体类型 */
+export type RefreshInput = z.infer<typeof refreshSchema>['body']
+/** 登出请求体类型 */
+export type LogoutInput = z.infer<typeof logoutSchema>['body']

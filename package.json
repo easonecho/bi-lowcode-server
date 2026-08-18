@@ -11,7 +11,17 @@
     "prisma:migrate": "prisma migrate dev --name init",
     "prisma:seed": "tsx prisma/seed.ts",
     "prisma:studio": "prisma studio",
-    "db:reset": "prisma migrate reset --force"
+    "db:reset": "prisma migrate reset --force",
+    "prisma:deploy": "prisma migrate deploy",
+    "prisma:status": "prisma migrate status",
+    "lint": "eslint .",
+    "lint:fix": "eslint . --fix",
+    "format": "prettier --write \"src/**/*.ts\" \"prisma/**/*.ts\"",
+    "format:check": "prettier --check \"src/**/*.ts\"",
+    "prepare": "husky",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "test:coverage": "vitest run --coverage"
   },
   "keywords": [
     "bi",
@@ -31,16 +41,21 @@
     "jsonwebtoken": "^9.0.3",
     "koa": "^3.2.1",
     "koa-bodyparser": "^4.4.1",
+    "koa-helmet": "^9.0.0",
     "koa-jwt": "^4.0.4",
     "koa-logger": "^4.0.0",
     "koa-swagger-decorator": "^1.8.7",
     "mysql2": "^3.23.3",
+    "exceljs": "^4.4.0",
     "pino": "^9.4.0",
     "pino-pretty": "^11.2.2",
     "swagger-ui-dist": "^5.32.13",
     "zod": "^3.23.8"
   },
   "devDependencies": {
+    "@commitlint/cli": "^19.0.0",
+    "@commitlint/config-conventional": "^19.0.0",
+    "@eslint/js": "^9.0.0",
     "@types/bcryptjs": "^2.4.6",
     "@types/jsonwebtoken": "^9.0.10",
     "@types/koa": "^3.0.3",
@@ -50,10 +65,29 @@
     "@types/koa-jwt": "^3.2.2",
     "@types/koa-logger": "^3.1.5",
     "@types/node": "^26.2.0",
+    "@types/supertest": "^6.0.0",
+    "eslint": "^9.0.0",
+    "eslint-config-prettier": "^9.0.0",
+    "husky": "^9.0.0",
+    "lint-staged": "^15.0.0",
     "nodemon": "^3.1.14",
+    "prettier": "^3.0.0",
     "prisma": "^5.22.0",
+    "supertest": "^7.0.0",
     "ts-node": "^10.9.2",
     "tsx": "^4.23.12",
-    "typescript": "^7.0.2"
+    "typescript": "^5.5.0",
+    "typescript-eslint": "^8.0.0",
+    "vitest": "^2.0.0"
+  },
+  "lint-staged": {
+    "src/**/*.ts": [
+      "eslint --fix",
+      "prettier --write"
+    ],
+    "prisma/seed.ts": [
+      "eslint --fix",
+      "prettier --write"
+    ]
   }
 }

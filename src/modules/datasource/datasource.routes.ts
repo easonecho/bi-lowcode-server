@@ -1,70 +1,124 @@
 /**
  * ============================================================================
- * BI 低代码平台 - 数据源模块路由层 (重构后)
+ * BI 低代码平台 - 数据源模块路由层
  * ============================================================================
- * 仅负责: 路由声明 → 参数校验 → 调用 service → 返回响应
- * 不包含 prisma 调用、密码加解密、数据库连接等业务逻辑
+ * 路由声明 → 参数校验 → 权限校验 → 调用 service → 返回响应
+ * P2 新增: 表字段结构 + Schema 浏览路由
  * ============================================================================
  */
 
-import Router from '@koa/router';
-import { ResponseUtil } from '../../utils/response';
-import { JwtPayload } from '../../utils/jwt';
-import { validate, idParamSchema } from '../../middleware/validate';
+import Router from '@koa/router'
+import { ResponseUtil } from '../../utils/response'
+import { JwtPayload } from '../../utils/jwt'
+import { validate, idParamSchema } from '../../middleware/validate'
+import { requirePermission } from '../../middleware/role'
 import {
   listDatasourceSchema,
   createDatasourceSchema,
   updateDatasourceSchema,
-} from './datasource.dto';
-import { datasourceService } from './datasource.service';
+} from './datasource.dto'
+import { datasourceService } from './datasource.service'
 
-const router = new Router({ prefix: '/api/datasources' });
+const router = new Router({ prefix: '/api/datasources' })
 
 /** GET /api/datasources 列表 (分页) */
-router.get('/', validate(listDatasourceSchema), async (ctx) => {
-  const q = ctx.query as any;
-  const result = await datasourceService.list(q);
-  ctx.body = ResponseUtil.paginate(result.list, result.total, result.page, result.pageSize);
-});
+router.get(
+  '/',
+  requirePermission('datasource:view'),
+  validate(listDatasourceSchema),
+  async (ctx) => {
+    const q = ctx.query as any
+    const result = await datasourceService.list(q)
+    ctx.body = ResponseUtil.paginate(result.list, result.total, result.page, result.pageSize)
+  },
+)
 
 /** GET /api/datasources/:id 详情 */
-router.get('/:id', validate(idParamSchema), async (ctx) => {
-  const result = await datasourceService.getById(ctx.params.id as unknown as number);
-  ctx.body = ResponseUtil.success(result);
-});
+router.get('/:id', requirePermission('datasource:view'), validate(idParamSchema), async (ctx) => {
+  const result = await datasourceService.getById(ctx.params.id as unknown as number)
+  ctx.body = ResponseUtil.success(result)
+})
 
 /** POST /api/datasources 创建 */
-router.post('/', validate(createDatasourceSchema), async (ctx) => {
-  const { userId } = ctx.state.user as JwtPayload;
-  const result = await datasourceService.create(ctx.request.body as any, userId);
-  ctx.body = ResponseUtil.success(result, '创建成功');
-});
+router.post(
+  '/',
+  requirePermission('datasource:create'),
+  validate(createDatasourceSchema),
+  async (ctx) => {
+    const { userId } = ctx.state.user as JwtPayload
+    const result = await datasourceService.create(ctx.request.body as any, userId)
+    ctx.body = ResponseUtil.success(result, '创建成功')
+  },
+)
 
 /** PUT /api/datasources/:id 更新 */
-router.put('/:id', validate(updateDatasourceSchema), async (ctx) => {
-  const result = await datasourceService.update(
-    ctx.params.id as unknown as number,
-    ctx.request.body as any
-  );
-  ctx.body = ResponseUtil.success(result, '更新成功');
-});
+router.put(
+  '/:id',
+  requirePermission('datasource:edit'),
+  validate(updateDatasourceSchema),
+  async (ctx) => {
+    const result = await datasourceService.update(
+      ctx.params.id as unknown as number,
+      ctx.request.body as any,
+    )
+    ctx.body = ResponseUtil.success(result, '更新成功')
+  },
+)
 
 /** DELETE /api/datasources/:id 删除 */
-router.delete('/:id', validate(idParamSchema), async (ctx) => {
-  await datasourceService.remove(ctx.params.id as unknown as number);
-  ctx.body = ResponseUtil.success(null, '删除成功');
-});
+router.delete(
+  '/:id',
+  requirePermission('datasource:delete'),
+  validate(idParamSchema),
+  async (ctx) => {
+    await datasourceService.remove(ctx.params.id as unknown as number)
+    ctx.body = ResponseUtil.success(null, '删除成功')
+  },
+)
 
 /** POST /api/datasources/:id/test 测试连接 */
-router.post('/:id/test', validate(idParamSchema), async (ctx) => {
-  const result = await datasourceService.test(ctx.params.id as unknown as number);
-  ctx.body = ResponseUtil.success(result, '连接成功');
-});
+router.post(
+  '/:id/test',
+  requirePermission('datasource:view'),
+  validate(idParamSchema),
+  async (ctx) => {
+    const result = await datasourceService.test(ctx.params.id as unknown as number)
+    ctx.body = ResponseUtil.success(result, '连接成功')
+  },
+)
 
 /** GET /api/datasources/:id/tables 获取表列表 */
-router.get('/:id/tables', validate(idParamSchema), async (ctx) => {
-  const tables = await datasourceService.listTables(ctx.params.id as unknown as number);
-  ctx.body = ResponseUtil.success(tables);
-});
+router.get(
+  '/:id/tables',
+  requirePermission('datasource:view'),
+  validate(idParamSchema),
+  async (ctx) => {
+    const tables = await datasourceService.listTables(ctx.params.id as unknown as number)
+    ctx.body = ResponseUtil.success(tables)
+  },
+)
 
-export default router;
+/** GET /api/datasources/:id/tables/:table/fields 获取表字段结构 */
+router.get('/:id/tables/:table/fields', requirePermission('datasource:view'), async (ctx) => {
+  const id = Number(ctx.params.id)
+  const table = String(ctx.params.table)
+  if (!id || !table) {
+    ctx.body = ResponseUtil.error('参数错误', 10001)
+    return
+  }
+  const fields = await datasourceService.listTableFields(id, table)
+  ctx.body = ResponseUtil.success(fields)
+})
+
+/** GET /api/datasources/:id/schema 获取整个库的 Schema (表+字段树) */
+router.get(
+  '/:id/schema',
+  requirePermission('datasource:view'),
+  validate(idParamSchema),
+  async (ctx) => {
+    const schema = await datasourceService.getSchema(ctx.params.id as unknown as number)
+    ctx.body = ResponseUtil.success(schema)
+  },
+)
+
+export default router

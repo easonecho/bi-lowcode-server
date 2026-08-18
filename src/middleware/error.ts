@@ -6,23 +6,24 @@
  * ============================================================================
  */
 
-import { Context, Next } from 'koa';
+import { Context, Next } from 'koa'
+import logger from '../utils/logger'
 
 export async function errorHandler(ctx: Context, next: Next): Promise<void> {
   try {
-    await next();
+    await next()
   } catch (err: any) {
-    // 记录错误日志
-    console.error('[Error]', err);
+    // 记录错误日志(pino 结构化)
+    logger.error({ err, path: ctx.path, method: ctx.method }, '[Error]')
 
-    // 设置响应状态码
-    ctx.status = err.status || 500;
+    // 设置响应状态码 (BizException 用 statusCode 字段, 兼容 err.status)
+    ctx.status = err.statusCode || err.status || 500
 
     // 统一错误响应格式
     ctx.body = {
-      code: err.code || -1,
+      code: typeof err.code === 'number' ? err.code : -1,
       message: err.message || '服务器内部错误',
       data: undefined,
-    };
+    }
   }
 }
