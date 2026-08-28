@@ -42,10 +42,11 @@ export async function list(q: {
   if (q.keyword) {
     where.OR = [{ name: { contains: q.keyword } }, { description: { contains: q.keyword } }]
   }
-  if (q.status !== undefined) where.status = q.status
-  if (q.isPublic !== undefined) where.isPublic = q.isPublic
+  if (q.status !== undefined) where.status = Number(q.status)
+  if (q.isPublic !== undefined)
+    where.isPublic = q.isPublic === true || String(q.isPublic) === 'true'
   if (q.onlyFavorites && q.userId) {
-    where.favorites = { some: { userId: q.userId } }
+    where.favorites = { some: { userId: Number(q.userId) } }
   }
   // P2-3: 分组筛选 (显式转 number, 避免 query 字符串传入 Prisma)
   if (q.ungrouped) {

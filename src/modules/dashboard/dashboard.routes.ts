@@ -13,7 +13,8 @@ const router = new Router({ prefix: '/api/dashboards' })
 
 router.get('/', requirePermission('dashboard:view'), validate(listDashboardSchema), async (ctx) => {
   const { userId } = ctx.state.user as JwtPayload
-  const r = await dashboardService.list({ ...ctx.query, userId } as any)
+  const query = (ctx.state.validatedQuery || ctx.query) as any
+  const r = await dashboardService.list({ ...query, userId } as any)
   ctx.body = ResponseUtil.paginate(r.list, r.total, r.page, r.pageSize)
 })
 

@@ -20,8 +20,6 @@ import { blacklistToken, isTokenBlacklisted } from '../../utils/token-blacklist'
 import { BizException } from '../../utils/biz-error'
 import { ErrorCode } from '../../constants/error-code'
 import { LoginInput, RegisterInput } from './auth.dto'
-import { getMenuTreeByRoleIds, getPermsByRoleIds } from '../menu/menu.service'
-import { runWithContext } from '../../utils/request-context'
 
 /** 登录/注册返回的用户信息 (不含密码) */
 interface AuthUserResult {
@@ -38,15 +36,12 @@ interface AuthUserResult {
   updatedAt: Date
 }
 
-/** 登录返回结果 (含角色信息 + 菜单路由 + 权限码) */
+/** 登录返回结果 (仅含用户信息 + token; 路由/权限由 /api/menus/me/* 独立获取) */
 interface LoginResult extends TokenPair {
   user: AuthUserResult & {
     roleName: string
-    permissions: unknown
     roleIds: number[]
   }
-  routers: unknown[]
-  perms: string[]
 }
 
 /** 注册返回结果 */
@@ -54,15 +49,12 @@ interface RegisterResult extends TokenPair {
   user: AuthUserResult
 }
 
-/** 刷新 token 返回结果 (含角色信息 + 菜单路由 + 权限码) */
+/** 刷新 token 返回结果 (仅含用户信息 + token; 路由/权限由 /api/menus/me/* 独立获取) */
 interface RefreshResult extends TokenPair {
   user: AuthUserResult & {
     roleName: string
-    permissions: unknown
     roleIds: number[]
   }
-  routers: unknown[]
-  perms: string[]
 }
 
 /**
@@ -84,36 +76,9 @@ async function collectRoleIds(userId: number, primaryRoleId: number): Promise<nu
 }
 
 /**
- * 在请求上下文内构建用户的菜单路由树 + 权限码列表
- * login/refreshToken 不在 HTTP 中间件链中, 需手动 runWithContext 注入上下文
- */
-async function buildRoutersAndPerms(
-  roleIds: number[],
-  tenantId: number,
-  userId: number,
-  username: string,
-  roleId: number,
-  dsType: string,
-): Promise<{ routers: unknown[]; perms: string[] }> {
-  try {
-    return await runWithContext(
-      { tenantId, userId, roleId, dsType, username, roleIds },
-      async () => {
-        const [routers, perms] = await Promise.all([
-          getMenuTreeByRoleIds(roleIds),
-          getPermsByRoleIds(roleIds),
-        ])
-        return { routers, perms }
-      },
-    )
-  } catch {
-    return { routers: [], perms: [] }
-  }
-}
-
-/**
  * 用户登录
- * 流程: 查用户 → 校验密码 → 检查状态 → 生成 JWT → 返回 { token, user, routers, perms }
+ * 流程: 查用户 → 校验密码 → 检查状态 → 生成 JWT → 返回 { token, user }
+ * (路由树与权限码不在此返回, 由 /api/menus/me/tree 与 /api/menus/me/perms 独立提供)
  */
 export async function login(data: LoginInput): Promise<LoginResult> {
   const { username, password } = data
@@ -157,21 +122,9 @@ export async function login(data: LoginInput): Promise<LoginResult> {
     roleIds,
   })
 
-  // 6. 构建路由树 + 权限码 (在请求上下文中执行)
-  const { routers, perms } = await buildRoutersAndPerms(
-    roleIds,
-    user.tenantId,
-    user.id,
-    user.username,
-    user.roleId,
-    user.role.dsType,
-  )
-
-  // 7. 返回用户信息 (不包含密码)
+  // 6. 返回用户信息 (不包含密码); 路由树与权限码由 /api/menus/me/* 独立获取
   return {
     ...pair,
-    routers,
-    perms,
     user: {
       id: user.id,
       username: user.username,
@@ -184,7 +137,6 @@ export async function login(data: LoginInput): Promise<LoginResult> {
       tenantId: user.tenantId,
       roleIds,
       roleName: user.role.name,
-      permissions: user.role.permissions,
       createdAt: user.createdAt,
       updatedAt: user.updatedAt,
     },
@@ -301,7 +253,7 @@ export async function getProfile(userId: number): Promise<AuthUserResult & { rol
  * 用 refresh token 换取新的 token pair
  * - 校验 refresh token 签名 + 过期 + 类型
  * - 校验用户仍存在/未禁用/未软删
- * - 返回双 token + 最新用户信息 (role/permissions 可能变化) + 路由 + 权限码
+ * - 返回双 token + 最新用户信息 (路由/权限由 /api/menus/me/* 独立获取, 不在此返回)
  */
 export async function refreshToken(refresh: string): Promise<RefreshResult> {
   // refresh token 拉黑校验 (用户登出/改密码/管理员踢人会把 refresh 加入黑名单)
@@ -341,23 +293,12 @@ export async function refreshToken(refresh: string): Promise<RefreshResult> {
     roleIds,
   })
 
-  // 构建路由树 + 权限码
-  const { routers, perms } = await buildRoutersAndPerms(
-    roleIds,
-    user.tenantId,
-    user.id,
-    user.username,
-    user.roleId,
-    user.role.dsType,
-  )
-
   // Token Rotation: 刷新后立即拉黑旧 refresh token, 防止被泄露后反复使用
   blacklistToken(refresh, decodeTokenExpireAt(refresh) ?? undefined)
 
+  // 路由树与权限码不在此返回, 由 /api/menus/me/* 独立获取
   return {
     ...pair,
-    routers,
-    perms,
     user: {
       id: user.id,
       username: user.username,
@@ -369,7 +310,6 @@ export async function refreshToken(refresh: string): Promise<RefreshResult> {
       roleId: user.roleId,
       roleIds,
       roleName: user.role.name,
-      permissions: user.role.permissions,
       createdAt: user.createdAt,
       updatedAt: user.updatedAt,
     },

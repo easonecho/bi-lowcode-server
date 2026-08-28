@@ -462,10 +462,21 @@ async function main() {
       perms: null,
     },
     {
+      id: 3,
+      name: '模板管理',
+      parentId: 0,
+      orderNum: 2,
+      path: '/dashboard-templates',
+      component: 'dashboard-templates/index',
+      menuType: 'C',
+      icon: 'Files',
+      perms: null,
+    },
+    {
       id: 2,
       name: 'BI编辑器',
       parentId: 0,
-      orderNum: 2,
+      orderNum: 3,
       path: '/bi-editor',
       component: 'bi-editor/index',
       menuType: 'C',
@@ -473,22 +484,11 @@ async function main() {
       perms: null,
     },
     {
-      id: 10,
-      name: '系统管理',
-      parentId: 0,
-      orderNum: 10,
-      path: '/system',
-      component: null,
-      menuType: 'M',
-      icon: 'Setting',
-      perms: null,
-    },
-    {
       id: 101,
       name: '用户管理',
-      parentId: 10,
-      orderNum: 1,
-      path: 'system/users',
+      parentId: 0,
+      orderNum: 10,
+      path: '/system/users',
       component: 'system/users',
       menuType: 'C',
       icon: 'User',
@@ -541,9 +541,9 @@ async function main() {
     {
       id: 102,
       name: '角色管理',
-      parentId: 10,
-      orderNum: 2,
-      path: 'system/roles',
+      parentId: 0,
+      orderNum: 11,
+      path: '/system/roles',
       component: 'system/roles',
       menuType: 'C',
       icon: 'UserFilled',
@@ -607,9 +607,9 @@ async function main() {
     {
       id: 103,
       name: '菜单管理',
-      parentId: 10,
-      orderNum: 3,
-      path: 'system/menus',
+      parentId: 0,
+      orderNum: 12,
+      path: '/system/menus',
       component: 'system/menus',
       menuType: 'C',
       icon: 'Menu',
@@ -662,9 +662,9 @@ async function main() {
     {
       id: 104,
       name: '部门管理',
-      parentId: 10,
-      orderNum: 4,
-      path: 'system/departments',
+      parentId: 0,
+      orderNum: 13,
+      path: '/system/departments',
       component: 'system/departments',
       menuType: 'C',
       icon: 'OfficeBuilding',
@@ -673,9 +673,9 @@ async function main() {
     {
       id: 105,
       name: '数据源管理',
-      parentId: 10,
-      orderNum: 5,
-      path: 'system/datasources',
+      parentId: 0,
+      orderNum: 14,
+      path: '/system/datasources',
       component: 'system/datasources',
       menuType: 'C',
       icon: 'Coin',
@@ -684,9 +684,9 @@ async function main() {
     {
       id: 106,
       name: '数据集管理',
-      parentId: 10,
-      orderNum: 6,
-      path: 'system/datasets',
+      parentId: 0,
+      orderNum: 15,
+      path: '/system/datasets',
       component: 'system/datasets',
       menuType: 'C',
       icon: 'Histogram',
@@ -739,6 +739,13 @@ async function main() {
       },
     })
   }
+
+  // 软删除旧的「系统管理」一级目录 (id=10)，其子菜单已提升为顶级
+  await prisma.menu.updateMany({
+    where: { id: 10, deleted: false },
+    data: { deleted: true },
+  })
+
   console.log(
     `   - 菜单 ${menus.length} 条 (含 ${menus.filter((m) => m.menuType === 'F').length} 个按钮权限)`,
   )
@@ -746,10 +753,10 @@ async function main() {
   // 角色菜单分配
   const adminMenuIds = menus.map((m) => m.id)
   const userMenuIds = menus
-    .filter((m) => m.menuType !== 'F' && [1, 2, 105, 106, 20].includes(m.id))
+    .filter((m) => m.menuType !== 'F' && [1, 2, 3, 105, 106, 20].includes(m.id))
     .map((m) => m.id)
   const viewerMenuIds = menus
-    .filter((m) => m.menuType !== 'F' && [1, 20].includes(m.id))
+    .filter((m) => m.menuType !== 'F' && [1, 3, 20].includes(m.id))
     .map((m) => m.id)
 
   async function assignRoleMenus(roleId: number, ids: number[]) {
@@ -767,6 +774,775 @@ async function main() {
   console.log(
     `   - 角色菜单分配: ADMIN(${adminMenuIds.length}) / USER(${userMenuIds.length}) / VIEWER(${viewerMenuIds.length})`,
   )
+
+  // ===========================================================================
+  // 11. 创建仪表板模板 (预置模板 + 用户模板)
+  // ===========================================================================
+  console.log('\n11. 创建仪表板模板...')
+
+  // 通用画布配置
+  const tplCanvas = {
+    width: 1920,
+    height: 1080,
+    zoom: 1,
+    backgroundColor: '#ffffff',
+    backgroundImage: '',
+    showGrid: false,
+    gridSize: 10,
+    snapToGrid: false,
+    showRuler: true,
+    showGuides: true,
+    scrollX: 0,
+    scrollY: 0,
+  }
+
+  // 预置模板布局: 销售数据看板
+  const salesLayout = {
+    version: '1.0',
+    canvas: { ...tplCanvas },
+    guides: [],
+    components: [
+      {
+        id: 't1',
+        type: 'text',
+        x: 0,
+        y: 0,
+        width: 1920,
+        height: 80,
+        props: { content: '销售数据看板', fontSize: 32, align: 'center' },
+        style: { backgroundColor: '#1f6feb', color: '#ffffff', borderRadius: 8 },
+      },
+      {
+        id: 'k1',
+        type: 'indicator',
+        x: 40,
+        y: 100,
+        width: 440,
+        height: 140,
+        props: { title: '总销售额', value: '¥1,234,567', unit: '', trend: 12.5 },
+        style: { backgroundColor: '#ffffff', borderRadius: 8 },
+      },
+      {
+        id: 'k2',
+        type: 'indicator',
+        x: 500,
+        y: 100,
+        width: 440,
+        height: 140,
+        props: { title: '订单数', value: '8,654', unit: '单', trend: 8.3 },
+        style: { backgroundColor: '#ffffff', borderRadius: 8 },
+      },
+      {
+        id: 'k3',
+        type: 'indicator',
+        x: 960,
+        y: 100,
+        width: 440,
+        height: 140,
+        props: { title: '客单价', value: '¥142.7', unit: '', trend: -2.1 },
+        style: { backgroundColor: '#ffffff', borderRadius: 8 },
+      },
+      {
+        id: 'k4',
+        type: 'indicator',
+        x: 1420,
+        y: 100,
+        width: 440,
+        height: 140,
+        props: { title: '新增客户', value: '328', unit: '人', trend: 15.6 },
+        style: { backgroundColor: '#ffffff', borderRadius: 8 },
+      },
+      {
+        id: 'c1',
+        type: 'line-chart',
+        x: 40,
+        y: 260,
+        width: 900,
+        height: 360,
+        props: { title: '销售趋势', smooth: true },
+        dataConfig: {
+          categories: ['1月', '2月', '3月', '4月', '5月', '6月'],
+          series: [{ name: '销售额', data: [120, 132, 101, 134, 90, 230] }],
+        },
+        style: { backgroundColor: '#ffffff', borderRadius: 8 },
+      },
+      {
+        id: 'c2',
+        type: 'pie-chart',
+        x: 960,
+        y: 260,
+        width: 900,
+        height: 360,
+        props: { title: '品类占比' },
+        dataConfig: {
+          categories: ['数码', '服饰', '家居', '食品', '其他'],
+          series: [
+            {
+              name: '占比',
+              data: [
+                { value: 1048, name: '数码' },
+                { value: 735, name: '服饰' },
+                { value: 580, name: '家居' },
+                { value: 484, name: '食品' },
+                { value: 300, name: '其他' },
+              ],
+            },
+          ],
+        },
+        style: { backgroundColor: '#ffffff', borderRadius: 8 },
+      },
+      {
+        id: 'c3',
+        type: 'bar-chart',
+        x: 40,
+        y: 640,
+        width: 1820,
+        height: 400,
+        props: { title: '区域销售对比' },
+        dataConfig: {
+          categories: ['华东', '华南', '华北', '西南', '西北', '东北'],
+          series: [{ name: '销售额', data: [320, 302, 301, 234, 190, 250] }],
+        },
+        style: { backgroundColor: '#ffffff', borderRadius: 8 },
+      },
+    ],
+  }
+
+  // 预置模板布局: 运营监控看板
+  const opsLayout = {
+    version: '1.0',
+    canvas: { ...tplCanvas, backgroundColor: '#0d1117' },
+    guides: [],
+    components: [
+      {
+        id: 't1',
+        type: 'text',
+        x: 0,
+        y: 0,
+        width: 1920,
+        height: 80,
+        props: { content: '运营监控看板', fontSize: 32, align: 'center' },
+        style: { backgroundColor: '#161b22', color: '#58a6ff', borderRadius: 8 },
+      },
+      {
+        id: 'g1',
+        type: 'gauge',
+        x: 40,
+        y: 100,
+        width: 600,
+        height: 360,
+        props: { title: 'CPU 使用率', value: 68, max: 100 },
+        style: { backgroundColor: '#161b22', borderRadius: 8 },
+      },
+      {
+        id: 'g2',
+        type: 'gauge',
+        x: 660,
+        y: 100,
+        width: 600,
+        height: 360,
+        props: { title: '内存使用率', value: 76, max: 100 },
+        style: { backgroundColor: '#161b22', borderRadius: 8 },
+      },
+      {
+        id: 'g3',
+        type: 'gauge',
+        x: 1280,
+        y: 100,
+        width: 600,
+        height: 360,
+        props: { title: '磁盘使用率', value: 45, max: 100 },
+        style: { backgroundColor: '#161b22', borderRadius: 8 },
+      },
+      {
+        id: 'k1',
+        type: 'indicator',
+        x: 40,
+        y: 480,
+        width: 440,
+        height: 120,
+        props: { title: '在线用户', value: '1,256', unit: '人', trend: 5.2 },
+        style: { backgroundColor: '#161b22', color: '#58a6ff', borderRadius: 8 },
+      },
+      {
+        id: 'k2',
+        type: 'indicator',
+        x: 500,
+        y: 480,
+        width: 440,
+        height: 120,
+        props: { title: 'QPS', value: '8,432', unit: '', trend: 12.8 },
+        style: { backgroundColor: '#161b22', color: '#58a6ff', borderRadius: 8 },
+      },
+      {
+        id: 'k3',
+        type: 'indicator',
+        x: 960,
+        y: 480,
+        width: 440,
+        height: 120,
+        props: { title: '响应时间', value: '128', unit: 'ms', trend: -8.4 },
+        style: { backgroundColor: '#161b22', color: '#58a6ff', borderRadius: 8 },
+      },
+      {
+        id: 'k4',
+        type: 'indicator',
+        x: 1420,
+        y: 480,
+        width: 440,
+        height: 120,
+        props: { title: '错误率', value: '0.12', unit: '%', trend: -0.05 },
+        style: { backgroundColor: '#161b22', color: '#58a6ff', borderRadius: 8 },
+      },
+      {
+        id: 'c1',
+        type: 'line-chart',
+        x: 40,
+        y: 620,
+        width: 1820,
+        height: 420,
+        props: { title: '24h 系统指标趋势', smooth: true, area: true },
+        dataConfig: {
+          categories: ['00:00', '03:00', '06:00', '09:00', '12:00', '15:00', '18:00', '21:00'],
+          series: [
+            { name: 'CPU', data: [45, 38, 42, 68, 72, 75, 68, 55] },
+            { name: '内存', data: [62, 60, 65, 76, 78, 80, 76, 70] },
+          ],
+        },
+        style: { backgroundColor: '#161b22', borderRadius: 8 },
+      },
+    ],
+  }
+
+  // 预置模板布局: 用户分析看板
+  const userAnalysisLayout = {
+    version: '1.0',
+    canvas: { ...tplCanvas },
+    guides: [],
+    components: [
+      {
+        id: 't1',
+        type: 'text',
+        x: 0,
+        y: 0,
+        width: 1920,
+        height: 80,
+        props: { content: '用户分析看板', fontSize: 32, align: 'center' },
+        style: { backgroundColor: '#6f42c1', color: '#ffffff', borderRadius: 8 },
+      },
+      {
+        id: 'k1',
+        type: 'indicator',
+        x: 40,
+        y: 100,
+        width: 440,
+        height: 140,
+        props: { title: '活跃用户', value: '24,532', unit: '', trend: 6.8 },
+        style: { backgroundColor: '#ffffff', borderRadius: 8 },
+      },
+      {
+        id: 'k2',
+        type: 'indicator',
+        x: 500,
+        y: 100,
+        width: 440,
+        height: 140,
+        props: { title: '新增用户', value: '1,254', unit: '', trend: 14.2 },
+        style: { backgroundColor: '#ffffff', borderRadius: 8 },
+      },
+      {
+        id: 'k3',
+        type: 'indicator',
+        x: 960,
+        y: 100,
+        width: 440,
+        height: 140,
+        props: { title: '留存率', value: '68.5', unit: '%', trend: 2.3 },
+        style: { backgroundColor: '#ffffff', borderRadius: 8 },
+      },
+      {
+        id: 'k4',
+        type: 'indicator',
+        x: 1420,
+        y: 100,
+        width: 440,
+        height: 140,
+        props: { title: '转化率', value: '4.8', unit: '%', trend: 0.6 },
+        style: { backgroundColor: '#ffffff', borderRadius: 8 },
+      },
+      {
+        id: 'c1',
+        type: 'line-chart',
+        x: 40,
+        y: 260,
+        width: 900,
+        height: 360,
+        props: { title: '用户增长趋势', smooth: true },
+        dataConfig: {
+          categories: ['1月', '2月', '3月', '4月', '5月', '6月', '7月', '8月'],
+          series: [
+            { name: '总用户', data: [12000, 13500, 14800, 16200, 18500, 21300, 24500, 26800] },
+            { name: '新增', data: [800, 1500, 1300, 1400, 2300, 3200, 3200, 2300] },
+          ],
+        },
+        style: { backgroundColor: '#ffffff', borderRadius: 8 },
+      },
+      {
+        id: 'c2',
+        type: 'pie-chart',
+        x: 960,
+        y: 260,
+        width: 900,
+        height: 360,
+        props: { title: '用户渠道分布' },
+        dataConfig: {
+          series: [
+            {
+              name: '渠道',
+              data: [
+                { value: 5800, name: '搜索引擎' },
+                { value: 4200, name: '社交媒体' },
+                { value: 3100, name: '直接访问' },
+                { value: 1800, name: '邮件' },
+                { value: 2400, name: '其他' },
+              ],
+            },
+          ],
+        },
+        style: { backgroundColor: '#ffffff', borderRadius: 8 },
+      },
+      {
+        id: 'c3',
+        type: 'table',
+        x: 40,
+        y: 640,
+        width: 1820,
+        height: 400,
+        props: { title: '用户明细' },
+        dataConfig: {
+          columns: [
+            { key: 'name', label: '用户名' },
+            { key: 'channel', label: '渠道' },
+            { key: 'registerTime', label: '注册时间' },
+            { key: 'lastLogin', label: '最近登录' },
+          ],
+          rows: [
+            {
+              name: 'alice',
+              channel: '搜索引擎',
+              registerTime: '2025-01-12',
+              lastLogin: '2025-08-21',
+            },
+            {
+              name: 'bob',
+              channel: '社交媒体',
+              registerTime: '2025-03-08',
+              lastLogin: '2025-08-22',
+            },
+          ],
+        },
+        style: { backgroundColor: '#ffffff', borderRadius: 8 },
+      },
+    ],
+  }
+
+  // 预置模板布局: 空白看板
+  const blankLayout = {
+    version: '1.0',
+    canvas: { ...tplCanvas },
+    guides: [],
+    components: [],
+  }
+
+  // 用户模板布局: 销售周报
+  const weeklySalesLayout = {
+    version: '1.0',
+    canvas: { ...tplCanvas, width: 1280, height: 720 },
+    guides: [],
+    components: [
+      {
+        id: 't1',
+        type: 'text',
+        x: 0,
+        y: 0,
+        width: 1280,
+        height: 60,
+        props: { content: '本周销售周报', fontSize: 24, align: 'left' },
+        style: { backgroundColor: '#ffffff' },
+      },
+      {
+        id: 'c1',
+        type: 'bar-chart',
+        x: 0,
+        y: 80,
+        width: 620,
+        height: 300,
+        props: { title: '本周每日销售额' },
+        dataConfig: {
+          categories: ['周一', '周二', '周三', '周四', '周五', '周六', '周日'],
+          series: [{ name: '销售额', data: [8200, 9320, 9010, 9340, 12900, 13300, 11200] }],
+        },
+      },
+      {
+        id: 'c2',
+        type: 'table',
+        x: 640,
+        y: 80,
+        width: 640,
+        height: 300,
+        props: { title: '本周订单明细' },
+        dataConfig: {
+          columns: [
+            { key: 'orderId', label: '订单号' },
+            { key: 'amount', label: '金额' },
+            { key: 'status', label: '状态' },
+          ],
+        },
+      },
+      {
+        id: 'k1',
+        type: 'indicator',
+        x: 0,
+        y: 400,
+        width: 400,
+        height: 120,
+        props: { title: '本周总额', value: '¥63,310' },
+      },
+      {
+        id: 'k2',
+        type: 'indicator',
+        x: 420,
+        y: 400,
+        width: 400,
+        height: 120,
+        props: { title: '订单总数', value: '284 单' },
+      },
+      {
+        id: 'k3',
+        type: 'indicator',
+        x: 840,
+        y: 400,
+        width: 400,
+        height: 120,
+        props: { title: '环比', value: '+8.3%' },
+      },
+    ],
+  }
+
+  // 用户模板布局: 系统概览模板
+  const sysOverviewLayout = {
+    version: '1.0',
+    canvas: { ...tplCanvas, width: 1280, height: 800 },
+    guides: [],
+    components: [
+      {
+        id: 't1',
+        type: 'text',
+        x: 0,
+        y: 0,
+        width: 1280,
+        height: 60,
+        props: { content: '系统概览', fontSize: 24, align: 'left' },
+      },
+      {
+        id: 'c1',
+        type: 'pie-chart',
+        x: 0,
+        y: 80,
+        width: 620,
+        height: 360,
+        props: { title: '用户角色分布' },
+        dataConfig: {
+          series: [
+            {
+              name: '用户数',
+              data: [
+                { value: 1, name: '管理员' },
+                { value: 1, name: '普通用户' },
+                { value: 1, name: '访客' },
+              ],
+            },
+          ],
+        },
+      },
+      {
+        id: 'c2',
+        type: 'bar-chart',
+        x: 640,
+        y: 80,
+        width: 640,
+        height: 360,
+        props: { title: '数据源数据集统计' },
+        dataConfig: { categories: ['本地 MySQL'], series: [{ name: '数据集数', data: [3] }] },
+      },
+      {
+        id: 'k1',
+        type: 'indicator',
+        x: 0,
+        y: 460,
+        width: 410,
+        height: 140,
+        props: { title: '用户总数', value: '3' },
+      },
+      {
+        id: 'k2',
+        type: 'indicator',
+        x: 430,
+        y: 460,
+        width: 410,
+        height: 140,
+        props: { title: '数据源总数', value: '1' },
+      },
+      {
+        id: 'k3',
+        type: 'indicator',
+        x: 860,
+        y: 460,
+        width: 420,
+        height: 140,
+        props: { title: '仪表板总数', value: '2' },
+      },
+    ],
+  }
+
+  // 用户模板布局: 财务月报
+  const financeMonthlyLayout = {
+    version: '1.0',
+    canvas: { ...tplCanvas, width: 1280, height: 900 },
+    guides: [],
+    components: [
+      {
+        id: 't1',
+        type: 'text',
+        x: 0,
+        y: 0,
+        width: 1280,
+        height: 60,
+        props: { content: '2025 年 8 月财务月报', fontSize: 24, align: 'left' },
+      },
+      {
+        id: 'k1',
+        type: 'indicator',
+        x: 0,
+        y: 80,
+        width: 410,
+        height: 140,
+        props: { title: '本月营收', value: '¥568,200', trend: 8.5 },
+      },
+      {
+        id: 'k2',
+        type: 'indicator',
+        x: 430,
+        y: 80,
+        width: 410,
+        height: 140,
+        props: { title: '本月支出', value: '¥342,500', trend: 3.2 },
+      },
+      {
+        id: 'k3',
+        type: 'indicator',
+        x: 860,
+        y: 80,
+        width: 420,
+        height: 140,
+        props: { title: '净利润', value: '¥225,700', trend: 18.4 },
+      },
+      {
+        id: 'c1',
+        type: 'line-chart',
+        x: 0,
+        y: 240,
+        width: 1280,
+        height: 360,
+        props: { title: '营收/支出趋势', smooth: true, area: true },
+        dataConfig: {
+          categories: ['1月', '2月', '3月', '4月', '5月', '6月', '7月', '8月'],
+          series: [
+            {
+              name: '营收',
+              data: [420000, 435000, 450000, 468000, 482000, 495000, 528000, 568200],
+            },
+            {
+              name: '支出',
+              data: [280000, 295000, 310000, 318000, 325000, 332000, 338000, 342500],
+            },
+          ],
+        },
+      },
+      {
+        id: 'c2',
+        type: 'pie-chart',
+        x: 0,
+        y: 620,
+        width: 620,
+        height: 260,
+        props: { title: '支出结构' },
+        dataConfig: {
+          series: [
+            {
+              name: '支出',
+              data: [
+                { value: 142000, name: '人力成本' },
+                { value: 86000, name: '运营成本' },
+                { value: 64500, name: '营销推广' },
+                { value: 50000, name: '其他' },
+              ],
+            },
+          ],
+        },
+      },
+      {
+        id: 'c3',
+        type: 'table',
+        x: 640,
+        y: 620,
+        width: 640,
+        height: 260,
+        props: { title: '本月主要支出项' },
+        dataConfig: {
+          columns: [
+            { key: 'item', label: '支出项' },
+            { key: 'amount', label: '金额' },
+            { key: 'ratio', label: '占比' },
+          ],
+          rows: [
+            { item: '人力成本', amount: '¥142,000', ratio: '41.5%' },
+            { item: '运营成本', amount: '¥86,000', ratio: '25.1%' },
+          ],
+        },
+      },
+    ],
+  }
+
+  // 预置模板定义
+  /**
+   * 鐢熸垚 SVG 缂╃暐鍥?Data URL (鐢ㄤ簬妯℃澘鍒楄〃棰勮, 閬垮厤瀛樺偍 emoji 鏂囨湰)
+   */
+  function svgThumb(bg: string, fg: string, title: string, subtitle: string): string {
+    const svg = `<svg xmlns='http://www.w3.org/2000/svg' width='320' height='180' viewBox='0 0 320 180'><rect width='320' height='180' fill='${bg}'/><text x='160' y='78' font-size='52' font-weight='700' fill='${fg}' text-anchor='middle' font-family='sans-serif'>${title}</text><text x='160' y='150' font-size='14' fill='${fg}' text-anchor='middle' font-family='sans-serif' opacity='0.75'>${subtitle}</text></svg>`
+    return `data:image/svg+xml;base64,${Buffer.from(svg).toString('base64')}`
+  }
+
+  // 预置模板定义
+  const presetTemplates = [
+    {
+      name: '销售数据看板',
+      description: '含指标卡、趋势图、占比图、明细表的销售分析模板',
+      category: 'business',
+      thumbnail: svgThumb('#1f6feb', '#ffffff', '销售', '销售数据看板'),
+      isPublic: true,
+      isSystem: true,
+      layout: salesLayout,
+    },
+    {
+      name: '运营监控看板',
+      description: '含仪表盘、实时指标、趋势图的运维监控模板',
+      category: 'operations',
+      thumbnail: svgThumb('#0d1117', '#58a6ff', '运营', '运营监控看板'),
+      isPublic: true,
+      isSystem: true,
+      layout: opsLayout,
+    },
+    {
+      name: '用户分析看板',
+      description: '用户增长、留存、渠道分布、用户明细分析模板',
+      category: 'business',
+      thumbnail: svgThumb('#6f42c1', '#ffffff', '用户', '用户分析看板'),
+      isPublic: true,
+      isSystem: true,
+      layout: userAnalysisLayout,
+    },
+    {
+      name: '空白看板',
+      description: '从零开始，自由搭建',
+      category: 'basic',
+      thumbnail: svgThumb('#f6f8fa', '#57606a', '空白', '从零开始'),
+      isPublic: true,
+      isSystem: true,
+      layout: blankLayout,
+    },
+  ]
+
+  // 用户模板定义
+  const userTemplates = [
+    {
+      name: '销售周报模板',
+      description: '适用于每周销售数据回顾, 含 KPI/柱状图/明细表',
+      category: 'report',
+      thumbnail: svgThumb('#2da44e', '#ffffff', '周报', '销售周报模板'),
+      isPublic: true,
+      isSystem: false,
+      layout: weeklySalesLayout,
+    },
+    {
+      name: '系统概览模板',
+      description: '系统用户/数据源/仪表板统计概览',
+      category: 'system',
+      thumbnail: svgThumb('#0969da', '#ffffff', '系统', '系统概览模板'),
+      isPublic: true,
+      isSystem: false,
+      layout: sysOverviewLayout,
+    },
+    {
+      name: '财务月报模板',
+      description: '营收/支出/净利润分析, 含趋势图与饼图',
+      category: 'finance',
+      thumbnail: svgThumb('#d4a017', '#ffffff', '财务', '财务月报模板'),
+      isPublic: false,
+      isSystem: false,
+      layout: financeMonthlyLayout,
+    },
+  ]
+
+  async function ensureTemplate(name: string, def: any, creatorId: number, tenantId: number) {
+    let t = await prisma.dashboardTemplate.findFirst({
+      where: { name, deleted: false, tenantId },
+    })
+    if (!t) {
+      t = await prisma.dashboardTemplate.create({
+        data: {
+          name: def.name,
+          description: def.description,
+          layout: def.layout,
+          thumbnail: def.thumbnail,
+          category: def.category,
+          isPublic: def.isPublic,
+          isSystem: def.isSystem,
+          creatorId,
+          createBy: 'system',
+          tenantId,
+        } as any,
+      })
+    } else {
+      // 已存在则更新 (保证幂等且能更新内容)
+      t = await prisma.dashboardTemplate.update({
+        where: { id: t.id },
+        data: {
+          description: def.description,
+          layout: def.layout,
+          thumbnail: def.thumbnail,
+          category: def.category,
+          isPublic: def.isPublic,
+          isSystem: def.isSystem,
+          updateBy: 'system',
+        } as any,
+      })
+    }
+    return t
+  }
+
+  const tenantId = 1
+  let presetCount = 0
+  let userCount = 0
+  for (const def of presetTemplates) {
+    await ensureTemplate(def.name, def, admin.id, tenantId)
+    presetCount++
+  }
+  for (const def of userTemplates) {
+    await ensureTemplate(def.name, def, admin.id, tenantId)
+    userCount++
+  }
+  console.log(`   - 预置模板 ${presetCount} 个 / 用户模板 ${userCount} 个`)
 
   // ===========================================================================
   // 完成

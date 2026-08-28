@@ -1,7 +1,10 @@
 /**
  * 仪表板模板模块 Service (P2-3)
  * - 模板 CRUD (租户隔离 + 逻辑删除)
- * - saveAsTemplate: 将已有仪表板布局保存为模板
+ * - isSystem 字段区分预置模板与用户模板
+ *   - 预置模板 (isSystem=true): 仅允许 apply, 不允许 update/remove
+ *   - 用户模板 (isSystem=false): 完整 CRUD
+ * - saveAsTemplate: 将已有仪表板布局保存为用户模板 (isSystem=false)
  * - applyTemplate: 基于模板创建新仪表板 (复制 layout, 不复制图表关联)
  */
 import { prisma } from '../../config/prisma'
@@ -15,9 +18,15 @@ import type {
   ApplyTemplateInput,
 } from './dashboard-template.dto'
 
-export async function list(category?: string) {
+/**
+ * 查询模板列表
+ * @param category 分类过滤 (可选)
+ * @param isSystem 是否系统预置模板过滤 (可选, true=仅预置, false=仅用户, undefined=全部)
+ */
+export async function list(category?: string, isSystem?: boolean) {
   const where: any = { deleted: false, tenantId: getTenantId() }
   if (category) where.category = category
+  if (isSystem !== undefined) where.isSystem = isSystem
   return prisma.dashboardTemplate.findMany({
     where,
     include: {
@@ -46,7 +55,17 @@ export async function create(input: CreateDashboardTemplateInput, creatorId: num
 }
 
 export async function update(id: number, input: UpdateDashboardTemplateInput) {
-  await getById(id)
+  const t = await getById(id)
+  // 🔒 预置模板禁止修改 (保护系统原始数据)，但允许更新缩略图快照
+  if (t.isSystem) {
+    if (input.thumbnail !== undefined) {
+      return prisma.dashboardTemplate.update({
+        where: { id },
+        data: { thumbnail: input.thumbnail, updateBy: 'system' } as any,
+      })
+    }
+    throw new BizException(ErrorCode.DASHBOARD_TEMPLATE_IS_SYSTEM, '系统预置模板不可修改')
+  }
   if (input.name) {
     const tenantId = getTenantId()
     const exists = await prisma.dashboardTemplate.findFirst({
@@ -61,12 +80,17 @@ export async function update(id: number, input: UpdateDashboardTemplateInput) {
 }
 
 export async function remove(id: number) {
-  await getById(id)
+  const t = await getById(id)
+  // 🔒 预置模板禁止删除 (保护系统原始数据)
+  if (t.isSystem) {
+    throw new BizException(ErrorCode.DASHBOARD_TEMPLATE_IS_SYSTEM, '系统预置模板不可删除')
+  }
   await prisma.dashboardTemplate.update({ where: { id }, data: { deleted: true } })
 }
 
 /**
  * 从已有仪表板保存为模板 (仅保存 layout, 不复制图表关联)
+ * 始终生成用户模板 (isSystem=false)
  */
 export async function saveAsTemplate(
   dashboardId: number,
@@ -88,6 +112,7 @@ export async function saveAsTemplate(
       thumbnail: input.thumbnail,
       category: input.category,
       isPublic: input.isPublic ?? true,
+      isSystem: false, // 🔑 saveAsTemplate 始终生成用户模板
       creatorId,
       createBy: 'system',
       tenantId,
@@ -99,6 +124,7 @@ export async function saveAsTemplate(
  * 基于模板创建新仪表板
  * - 复制 layout (深拷贝), 状态强制为草稿, isPublic 由调用方决定
  * - 不复制图表关联 (模板仅保留布局结构)
+ * - 系统预置模板与用户模板均可被 apply
  */
 export async function applyTemplate(
   templateId: number,

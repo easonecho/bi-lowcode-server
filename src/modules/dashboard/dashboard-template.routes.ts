@@ -1,5 +1,6 @@
 /**
  * 仪表板模板模块 Routes (P2-3)
+ * - GET /api/dashboard-templates?category=&isSystem= 支持分类与系统/用户模板过滤
  */
 import Router from '@koa/router'
 import { ResponseUtil } from '../../utils/response'
@@ -13,12 +14,27 @@ import {
   applyTemplateSchema,
 } from './dashboard-template.dto'
 import { dashboardTemplateService } from './dashboard-template.service'
+import { TEMPLATE_CATEGORIES } from '../../constants/template-category'
 
 const router = new Router({ prefix: '/api/dashboard-templates' })
 
+/** 将字符串 'true'/'false' 转为 boolean, 其他返回 undefined */
+function parseBool(val: unknown): boolean | undefined {
+  if (val === undefined || val === null || val === '') return undefined
+  if (val === 'true' || val === '1' || val === 1 || val === true) return true
+  if (val === 'false' || val === '0' || val === 0 || val === false) return false
+  return undefined
+}
+
 router.get('/', requirePermission('dashboard:view'), async (ctx) => {
   const category = (ctx.query.category as string) || undefined
-  ctx.body = ResponseUtil.success(await dashboardTemplateService.list(category))
+  const isSystem = parseBool(ctx.query.isSystem)
+  ctx.body = ResponseUtil.success(await dashboardTemplateService.list(category, isSystem))
+})
+
+/** GET /api/dashboard-templates/categories - 获取模板分类枚举 (服务端统一管理, 避免用户自由输入) */
+router.get('/categories', requirePermission('dashboard:view'), (ctx) => {
+  ctx.body = ResponseUtil.success(TEMPLATE_CATEGORIES)
 })
 
 router.get('/:id', requirePermission('dashboard:view'), validate(idParamSchema), async (ctx) => {

@@ -1,4 +1,4 @@
-﻿/**
+/**
  * ============================================================================
  * BI 低代码平台 - 业务错误码定义
  * ============================================================================
@@ -70,6 +70,7 @@ export const ErrorCode = {
   // 仪表板模板 52xxx (P2-3)
   DASHBOARD_TEMPLATE_NOT_FOUND: 52001,
   DASHBOARD_TEMPLATE_NAME_EXISTS: 52002,
+  DASHBOARD_TEMPLATE_IS_SYSTEM: 52003, // 系统预置模板不可修改/删除
 
   // 系统配置 53xxx (P2-4)
   SYS_CONFIG_NOT_FOUND: 53001,
@@ -157,6 +158,7 @@ export const ErrorMessage: Record<number, string> = {
 
   [ErrorCode.DASHBOARD_TEMPLATE_NOT_FOUND]: '仪表板模板不存在',
   [ErrorCode.DASHBOARD_TEMPLATE_NAME_EXISTS]: '模板名称已存在',
+  [ErrorCode.DASHBOARD_TEMPLATE_IS_SYSTEM]: '系统预置模板不可修改或删除',
 
   [ErrorCode.SYS_CONFIG_NOT_FOUND]: '系统配置不存在',
   [ErrorCode.SYS_CONFIG_KEY_EXISTS]: '配置键名已存在',
