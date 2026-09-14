@@ -1,0 +1,14 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 400 225" preserveAspectRatio="none">
+  <defs>
+    <linearGradient id="g1" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#22d3ee"/>
+      <stop offset="100%" stop-color="#3b82f6"/>
+    </linearGradient>
+  </defs>
+  <rect x="2" y="2" width="396" height="221" fill="rgba(15,23,42,0.4)" stroke="url(#g1)" stroke-width="2"/>
+  <path d="M2 20 L2 2 L20 2" fill="none" stroke="#67e8f9" stroke-width="3"/>
+  <path d="M380 2 L398 2 L398 20" fill="none" stroke="#67e8f9" stroke-width="3"/>
+  <path d="M2 205 L2 223 L20 223" fill="none" stroke="#67e8f9" stroke-width="3"/>
+  <path d="M380 223 L398 223 L398 205" fill="none" stroke="#67e8f9" stroke-width="3"/>
+  <text x="200" y="118" text-anchor="middle" fill="#22d3ee" font-size="14" font-family="sans-serif" opacity="0.6">TECH CORNER</text>
+</svg>

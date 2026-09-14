@@ -56,6 +56,7 @@ model User {
   dashboardFavorites DashboardFavorite[] @relation("UserDashboardFavorite")
   dashboardGroups    DashboardGroup[]    @relation("UserDashboardGroup")
   dashboardTemplates DashboardTemplate[] @relation("UserDashboardTemplate")
+  materials          Material[]          @relation("UserMaterial")
 
   // 多角色关联 (P0: 用户-角色多对多)
   userRoles UserRole[]
@@ -528,4 +529,35 @@ model ScheduledTask {
   updatedAt    DateTime @updatedAt @map("updated_at")
   @@map("scheduled_tasks")
   @@index([tenantId])
+}
+
+// ============================================================================
+// P3 新增: 素材管理模块 (视频/图片/装饰边框等大屏素材)
+// ============================================================================
+model Material {
+  id          Int      @id @default(autoincrement())
+  name        String   @db.VarChar(200)             // 素材名称
+  type        String   @db.VarChar(20)              // 素材分类: video / image / decor
+  fileName    String   @db.VarChar(255)             // 存储文件名 (可能含子目录)
+  originalName String  @db.VarChar(255)             // 原始上传文件名
+  mimeType    String   @db.VarChar(100)             // MIME 类型
+  size        Int      @default(0)                  // 文件大小 (字节)
+  url         String   @db.VarChar(500)             // 访问 URL (/uploads/xxx.mp4)
+  thumbnail   String?  @db.VarChar(500)             // 缩略图 URL
+  width       Int?                                  // 宽度 (px)
+  height      Int?                                  // 高度 (px)
+  description String?  @db.VarChar(500)             // 描述
+  creatorId   Int
+  creator     User     @relation("UserMaterial", fields: [creatorId], references: [id])
+  tenantId    Int      @default(1)
+  createBy    String?  @db.VarChar(50)
+  updateBy    String?  @db.VarChar(50)
+  deleted     Boolean  @default(false) @map("del_flag")
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+  @@map("materials")
+  @@index([creatorId])
+  @@index([tenantId])
+  @@index([deleted])
+  @@index([type])
 }

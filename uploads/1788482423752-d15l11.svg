@@ -1,0 +1,9 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 400 225" preserveAspectRatio="none">
+  <rect x="1" y="1" width="398" height="223" fill="rgba(15,23,42,0.3)" stroke="#22d3ee" stroke-width="1"/>
+  <rect x="6" y="6" width="388" height="213" fill="none" stroke="#22d3ee" stroke-width="0.5" opacity="0.5"/>
+  <circle cx="200" cy="2" r="3" fill="#67e8f9"/>
+  <circle cx="200" cy="223" r="3" fill="#67e8f9"/>
+  <circle cx="2" cy="112" r="3" fill="#67e8f9"/>
+  <circle cx="398" cy="112" r="3" fill="#67e8f9"/>
+  <text x="200" y="118" text-anchor="middle" fill="#22d3ee" font-size="12" font-family="sans-serif" opacity="0.5">SIMPLE</text>
+</svg>

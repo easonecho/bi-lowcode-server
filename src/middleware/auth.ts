@@ -24,6 +24,7 @@ const publicPaths = [
   '/api/health/live', // 存活检查
   '/api/health/ready', // 就绪检查
   '/api/public/dashboards/.+', // 公开看板分享访问
+  '/uploads/.*', // 静态素材文件访问 (图片/视频/装饰)
 ]
 
 /**

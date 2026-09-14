@@ -703,6 +703,17 @@ async function main() {
       icon: 'Monitor',
       perms: 'screen:view',
     },
+    {
+      id: 21,
+      name: '素材管理',
+      parentId: 0,
+      orderNum: 21,
+      path: '/material',
+      component: 'material/index',
+      menuType: 'C',
+      icon: 'Picture',
+      perms: 'material:view',
+    },
   ]
 
   for (const m of menus) {

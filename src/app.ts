@@ -43,6 +43,9 @@ import sysConfigRoutes from './modules/system-config/sys-config.routes'
 import positionRoutes from './modules/position/position.routes'
 import scheduledTaskRoutes from './modules/scheduled-task/scheduled-task.routes'
 import monitorRoutes from './modules/monitor/monitor.routes'
+import materialRoutes from './modules/material/material.routes'
+import fs from 'fs'
+import path from 'path'
 
 /**
  * 创建 Koa 应用
@@ -119,6 +122,41 @@ app.use(
   }),
 )
 
+// 4.5 静态素材文件服务 (无需认证, /uploads/ 前缀)
+const UPLOAD_DIR = path.join(process.cwd(), 'uploads')
+// 🔑 根据扩展名推断 Content-Type, 否则 Koa 默认返回 octet-stream, 浏览器无法渲染 SVG/MP4
+const MIME_MAP: Record<string, string> = {
+  '.svg': 'image/svg+xml',
+  '.mp4': 'video/mp4',
+  '.webm': 'video/webm',
+  '.mov': 'video/quicktime',
+  '.jpg': 'image/jpeg',
+  '.jpeg': 'image/jpeg',
+  '.png': 'image/png',
+  '.gif': 'image/gif',
+  '.webp': 'image/webp',
+  '.bmp': 'image/bmp',
+  '.json': 'application/json',
+}
+app.use(async (ctx, next) => {
+  if (ctx.path.startsWith('/uploads/')) {
+    const relativePath = ctx.path.slice('/uploads/'.length)
+    // 防止路径遍历攻击
+    const filePath = path.join(UPLOAD_DIR, relativePath)
+    if (filePath.startsWith(UPLOAD_DIR) && fs.existsSync(filePath)) {
+      const stat = fs.statSync(filePath)
+      if (stat.isFile()) {
+        const ext = path.extname(filePath).toLowerCase()
+        ctx.set('Content-Type', MIME_MAP[ext] || 'application/octet-stream')
+        ctx.body = fs.createReadStream(filePath)
+        ctx.set('Cache-Control', 'public, max-age=86400')
+        return
+      }
+    }
+  }
+  await next()
+})
+
 // 5. 请求体解析 (解析 JSON / form 数据)
 app.use(
   bodyParser({
@@ -163,6 +201,7 @@ app.use(sysConfigRoutes.routes()).use(sysConfigRoutes.allowedMethods())
 app.use(positionRoutes.routes()).use(positionRoutes.allowedMethods())
 app.use(scheduledTaskRoutes.routes()).use(scheduledTaskRoutes.allowedMethods())
 app.use(monitorRoutes.routes()).use(monitorRoutes.allowedMethods())
+app.use(materialRoutes.routes()).use(materialRoutes.allowedMethods())
 
 // 14. 启动 Token 黑名单后台清理 GC
 startBlacklistGc()
@@ -192,6 +231,7 @@ app.use(async (ctx) => {
           charts: '/api/charts',
           export: '/api/export',
           menus: '/api/menus',
+          materials: '/api/materials',
         },
       },
     }
