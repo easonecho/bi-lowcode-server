@@ -1,4 +1,4 @@
-/**
+﻿/**
  * ============================================================================
  * BI 低代码平台 - 数据库种子数据 (企业级重构)
  * ============================================================================
@@ -56,12 +56,12 @@ async function main() {
   console.log('\n2. 创建角色...')
   const adminRole = await prisma.role.upsert({
     where: { code: 'ADMIN' },
-    update: { deleted: false, permissions: JSON.stringify(['*']), dsType: 'all' },
+    update: { deleted: false, permissions: ['*'] as any, dsType: 'all' },
     create: {
       name: '系统管理员',
       code: 'ADMIN',
       description: '拥有系统全部权限',
-      permissions: JSON.stringify(['*']),
+      permissions: ['*'] as any,
       dsType: 'all',
       tenantId: 1,
     },
@@ -71,7 +71,7 @@ async function main() {
     where: { code: 'USER' },
     update: {
       deleted: false,
-      permissions: JSON.stringify([
+      permissions: [
         'dashboard:view',
         'dashboard:create',
         'dashboard:edit',
@@ -80,14 +80,14 @@ async function main() {
         'chart:edit',
         'dataset:view',
         'datasource:view',
-      ]),
+      ] as any,
       dsType: 'oneself',
     },
     create: {
       name: '普通用户',
       code: 'USER',
       description: '只能查看和操作自己的资源',
-      permissions: JSON.stringify([
+      permissions: [
         'dashboard:view',
         'dashboard:create',
         'dashboard:edit',
@@ -96,7 +96,7 @@ async function main() {
         'chart:edit',
         'dataset:view',
         'datasource:view',
-      ]),
+      ] as any,
       dsType: 'oneself',
       tenantId: 1,
     },
@@ -104,12 +104,12 @@ async function main() {
 
   const viewerRole = await prisma.role.upsert({
     where: { code: 'VIEWER' },
-    update: { deleted: false, permissions: JSON.stringify(['dashboard:view']), dsType: 'all' },
+    update: { deleted: false, permissions: ['dashboard:view'] as any, dsType: 'all' },
     create: {
       name: '访客',
       code: 'VIEWER',
       description: '只能查看公开的仪表板',
-      permissions: JSON.stringify(['dashboard:view']),
+      permissions: ['dashboard:view'] as any,
       dsType: 'all',
       tenantId: 1,
     },
